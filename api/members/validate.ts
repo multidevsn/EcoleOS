@@ -1,7 +1,7 @@
 import type { VercelRequest,VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 
-import { withSecurity } from '../../server/security'
+import { withSecurity } from '../../server/security.js'
 type Member={
   role?:string
   full_name?:string

@@ -1,7 +1,7 @@
 import type { VercelRequest,VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 
-import { withSecurity } from '../../server/security'
+import { withSecurity } from '../../server/security.js'
 function json(res:VercelResponse,status:number,body:unknown){return res.status(status).json(body)}
 
 function server(){
@@ -32,8 +32,8 @@ async function handler(req:VercelRequest,res:VercelResponse){
       .eq('school_id',profile.school_id)
       .order('created_at',{ascending:false})
     if(error)return json(res,500,{error:error.message})
-    const rows=data||[]
-    const counts=rows.reduce<Record<string,number>>((acc,row)=>{acc[row.role]=(acc[row.role]||0)+1;return acc},{})
+    const rows=Array.isArray(data)?data:[]
+    const counts=rows.reduce<Record<string,number>>((acc,row:{role:string})=>{acc[row.role]=(acc[row.role]||0)+1;return acc},{})
     return json(res,200,{school_id:profile.school_id,counts,rows})
   }catch(error:any){
     return json(res,error?.status||500,{error:error?.message||'Erreur serveur.'})

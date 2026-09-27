@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 import { syncProviderCosts } from '../../server/provider-costs.js'
 
-import { withSecurity } from '../../server/security'
+import { withSecurity } from '../../server/security.js'
 function json(res: VercelResponse, status: number, body: unknown) { return res.status(status).json(body) }
 function allowedEmails() { return String(process.env.PLATFORM_ADMIN_EMAILS || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean) }
 function monthStart() { return new Date().toISOString().slice(0, 8) + '01' }

@@ -2,7 +2,7 @@ import type { VercelRequest,VercelResponse } from '@vercel/node'
 import crypto from 'node:crypto'
 import { createClient } from '@supabase/supabase-js'
 
-import { withSecurity } from '../../server/security'
+import { withSecurity } from '../../server/security.js'
 export const config={api:{bodyParser:false}}
 async function rawBody(req:VercelRequest){const chunks:Buffer[]=[];for await(const c of req)chunks.push(Buffer.from(c));return Buffer.concat(chunks)}
 function validSignature(body:string,header:string,secret:string){
