@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "services": {
-    "api-services": {
+  "experimentalServices": {
+    "api-node-24": {
       "root": ".",
       "runtime": "nodejs24.x",
       "functions": {
