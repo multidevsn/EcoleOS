@@ -1,6 +1,6 @@
 import type { VercelRequest,VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
-import { withSecurity } from '../../server/security'
+import { withSecurity } from '../../server/security.js'
 type MemberRole='student'|'parent'|'teacher'|'admin'|'cafeteria'
 type MemberInput={role:MemberRole;full_name:string;email?:string;phone?:string;student_code?:string;external_ref?:string;parent?:{full_name:string;email:string;phone?:string};metadata?:Record<string,unknown>}
 
@@ -58,7 +58,7 @@ async function upsertEnrollment(admin:any,schoolId:string,createdBy:string,input
   return q.data
 }
 async function inviteAndLink(admin:any,enrollment:any){
-  if(!enrollment.email)return {invited:false,linked:false}
+  if(!enrollment.email)return {invited:false,linked:false,user_id:null as string|null}
   const existingUser=await findUserId(admin,enrollment.email)
   let userId=existingUser
   let invited=false
