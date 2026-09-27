@@ -1,19 +1,13 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "experimentalServices": {
-    "api-node-24": {
-      "root": ".",
-      "runtime": "nodejs24.x",
-      "functions": {
-        "api/wave/*.ts": {},
-        "api/onboarding/*.ts": {},
-        "api/metrics/*.ts": {},
-        "api/billing/*.ts": {},
-        "api/admin/*.ts": {},
-        "api/director/*.ts": {},
-        "api/admin/security.ts": {}
-      }
-    }
+  "functions": {
+    "api/wave/*.ts": { "memory": 1024 },
+    "api/onboarding/*.ts": { "memory": 1024 },
+    "api/metrics/*.ts": { "memory": 1024 },
+    "api/billing/*.ts": { "memory": 1024 },
+    "api/admin/*.ts": { "memory": 1024 },
+    "api/director/*.ts": { "memory": 1024 },
+    "api/admin/security.ts": { "memory": 1024 }
   },
   "crons": [
     {
