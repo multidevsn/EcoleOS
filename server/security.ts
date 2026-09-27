@@ -65,7 +65,7 @@ export async function recordSecurityEvent(req:VercelRequest,input:{eventType:str
   }
 }
 
-type Handler=(req:VercelRequest,res:VercelResponse,meta:{requestId:string;route:string})=>unknown
+type Handler=(req:VercelRequest,res:VercelResponse,meta:{requestId:string;route:string})=>Promise<void>|void
 
 export function withSecurity(route:string,handler:Handler){
   return async (req:VercelRequest,res:VercelResponse)=>{

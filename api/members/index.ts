@@ -1,7 +1,7 @@
 import type { VercelRequest,VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 
-import { withSecurity } from '../../server/security.js'
+import { withSecurity } from '../../server/security'
 function json(res:VercelResponse,status:number,body:unknown){return res.status(status).json(body)}
 
 function server(){

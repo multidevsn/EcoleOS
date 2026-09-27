@@ -9,9 +9,8 @@
     "strict": true,
     "noEmit": true,
     "esModuleInterop": true,
-    "isolatedModules": true,
-    "types": ["node"]
+    "isolatedModules": true
   },
-  "include": ["api/**/*.ts", "server/**/*.ts"],
+  "include": ["api/**/*.ts"],
   "exclude": ["node_modules"]
 }

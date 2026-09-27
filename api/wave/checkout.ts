@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 
-import { withSecurity } from '../../server/security.js'
+import { withSecurity } from '../../server/security'
 function json(res:VercelResponse,status:number,body:unknown){return res.status(status).json(body)}
 
 async function handler(req:VercelRequest,res:VercelResponse){
@@ -22,11 +22,11 @@ async function handler(req:VercelRequest,res:VercelResponse){
     const type=req.body?.type
     let amount=0
     let clientReference=''
-    let resource:'food_orders'|'school_payments'|'school_subscriptions'|'billing_cycles'
+    let resource:'food_orders'|'school_payments'|'school_subscriptions'
     let resourceId=''
 
     if(type==='food'){
-      const items:any[]=Array.isArray(req.body?.items)?req.body.items:[]
+      const items=Array.isArray(req.body?.items)?req.body.items:[]
       if(!items.length)return json(res,400,{error:'Panier vide.'})
       const normalized=items.map((x:any)=>({id:String(x.id),quantity:Math.floor(Number(x.quantity||0))})).filter(x=>x.quantity>0)
       const ids=[...new Set(normalized.map(x=>x.id))]

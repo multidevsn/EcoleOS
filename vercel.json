@@ -1,28 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "functions": {
-    "api/wave/*.ts": {
-      "runtime": "nodejs24.x"
-    },
-    "api/onboarding/*.ts": {
-      "runtime": "nodejs24.x"
-    },
-    "api/metrics/*.ts": {
-      "runtime": "nodejs24.x"
-    },
-    "api/billing/*.ts": {
-      "runtime": "nodejs24.x"
-    },
-    "api/admin/*.ts": {
-      "runtime": "nodejs24.x"
-    },
-    "api/director/*.ts": {
-      "runtime": "nodejs24.x"
-    },
-    "api/admin/security.ts": {
-      "runtime": "nodejs24.x"
-    }
-  },
   "crons": [
     {
       "path": "/api/admin/provider-costs",
