@@ -1,13 +1,12 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "$schema": "https://vercel.sh",
   "functions": {
     "api/wave/*.ts": { "memory": 1024 },
     "api/onboarding/*.ts": { "memory": 1024 },
     "api/metrics/*.ts": { "memory": 1024 },
     "api/billing/*.ts": { "memory": 1024 },
     "api/admin/*.ts": { "memory": 1024 },
-    "api/director/*.ts": { "memory": 1024 },
-    "api/admin/security.ts": { "memory": 1024 }
+    "api/director/*.ts": { "memory": 1024 }
   },
   "crons": [
     {
