@@ -178,7 +178,7 @@ async function tech(req: VercelRequest, res: VercelResponse) {
 export default async function adminRouter(req: VercelRequest, res: VercelResponse) {
   const route = routeFromRequest(req)
   const action = actionFromRequest(req)
-  const handlers: Record<string, (req: VercelRequest, res: VercelResponse) => Promise<unknown> | unknown> = {
+  const handlers: Record<string, (req: VercelRequest, res: VercelResponse, meta?: { requestId: string; route: string }) => Promise<unknown> | unknown> = {
     'provider-costs': providerCosts,
     security: securitySummary,
     tech,
