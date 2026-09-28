@@ -1,11 +1,7 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": [
-      "ES2022",
-      "DOM",
-      "DOM.Iterable"
-    ],
+    "lib": ["ES2022","DOM","DOM.Iterable"],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "allowJs": false,
@@ -15,15 +11,6 @@
     "esModuleInterop": true,
     "isolatedModules": true
   },
-  "include": [
-    "api/**/*.ts",
-    "api/**/*.d.ts",
-    "server/**/*.ts"
-  ],
-  "exclude": [
-    "node_modules"
-  ],
-  "files": [
-    "api/node-shims.d.ts"
-  ]
+  "include": ["api/**/*.ts"],
+  "exclude": ["node_modules"]
 }

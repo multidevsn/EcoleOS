@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 
-import { withSecurity } from '../../server/security.js'
+import { withSecurity } from '../../server/security'
 function json(res:VercelResponse,status:number,body:unknown){return res.status(status).json(body)}
 
 async function handler(req:VercelRequest,res:VercelResponse){
@@ -22,18 +22,18 @@ async function handler(req:VercelRequest,res:VercelResponse){
     const type=req.body?.type
     let amount=0
     let clientReference=''
-    let resource:'food_orders'|'school_payments'|'school_subscriptions'|'billing_cycles'
+    let resource:'food_orders'|'school_payments'|'school_subscriptions'
     let resourceId=''
 
     if(type==='food'){
       const items=Array.isArray(req.body?.items)?req.body.items:[]
       if(!items.length)return json(res,400,{error:'Panier vide.'})
-      const normalized:{id:string;quantity:number}[]=items.map((x:any)=>({id:String(x.id),quantity:Math.floor(Number(x.quantity||0))})).filter((x:{id:string;quantity:number})=>x.quantity>0)
-      const ids=[...new Set(normalized.map((x:{id:string;quantity:number})=>x.id))]
+      const normalized=items.map((x:any)=>({id:String(x.id),quantity:Math.floor(Number(x.quantity||0))})).filter(x=>x.quantity>0)
+      const ids=[...new Set(normalized.map(x=>x.id))]
       const {data:foods,error:foodsError}=await userClient.from('food_items').select('id,name,price_xof,active').in('id',ids).eq('active',true)
       if(foodsError)throw foodsError
       const byId=Object.fromEntries((foods||[]).map((x:any)=>[x.id,x]))
-      const orderItems:{food_item_id:string;quantity:number;unit_price_xof:number}[]=[]
+      const orderItems=[]
       for(const item of normalized){
         const food=byId[item.id]
         if(!food)return json(res,400,{error:`Article Food invalide : ${item.id}`})

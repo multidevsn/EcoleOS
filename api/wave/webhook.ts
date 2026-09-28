@@ -1,15 +1,15 @@
 import type { VercelRequest,VercelResponse } from '@vercel/node'
-import { createHmac, timingSafeEqual } from 'node:crypto'
+import crypto from 'node:crypto'
 import { createClient } from '@supabase/supabase-js'
 
-import { withSecurity } from '../../server/security.js'
+import { withSecurity } from '../../server/security'
 export const config={api:{bodyParser:false}}
 async function rawBody(req:VercelRequest){const chunks:Buffer[]=[];for await(const c of req)chunks.push(Buffer.from(c));return Buffer.concat(chunks)}
 function validSignature(body:string,header:string,secret:string){
   const m=header.match(/t=(\d+),v1=([a-f0-9]+)/);if(!m)return false
   const ts=Number(m[1]);if(Math.abs(Date.now()/1000-ts)>300)return false
-  const expected=createHmac('sha256',secret).update(String(ts)+body).digest('hex')
-  const a=Buffer.from(expected);const b=Buffer.from(m[2]);return a.length===b.length&&timingSafeEqual(a,b)
+  const expected=crypto.createHmac('sha256',secret).update(String(ts)+body).digest('hex')
+  const a=Buffer.from(expected);const b=Buffer.from(m[2]);return a.length===b.length&&crypto.timingSafeEqual(a,b)
 }
 
 async function handler(req:VercelRequest,res:VercelResponse){
