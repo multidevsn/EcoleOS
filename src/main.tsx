@@ -3,6 +3,7 @@ import {createRoot} from 'react-dom/client'
 import {supabase} from './lib/supabase'
 import {trackUsage} from './lib/telemetry'
 import {BookOpen, CalendarDays, CheckCircle2, ChevronRight, CircleDollarSign, ClipboardList, Clock3, Gift, GraduationCap, KeyRound, Landmark, LogOut, Mail, Menu, Package, Save, School, ShieldCheck, ShoppingCart, FileUp, UserPlus, RefreshCw, Check, AlertTriangle, Sparkles, Star, UserRound, Users, UtensilsCrossed, WalletCards, X, Lightbulb, MessageSquarePlus, ThumbsUp, BarChart3, Palette, ListChecks, Gauge, Activity, ServerCog, MessageCircle, Megaphone, Send, Flag, ShieldAlert, Search, Info, UsersRound, LockKeyhole} from 'lucide-react'
+import {SpeedInsights} from '@vercel/speed-insights/react'
 import '@fontsource-variable/bricolage-grotesque/wght.css'
 import '@fontsource/caveat/600.css'
 import './styles.css'
@@ -531,6 +532,7 @@ function App(){
         </>}
       </div>
     </section>
+    <SpeedInsights />
   </div>
 }
 
