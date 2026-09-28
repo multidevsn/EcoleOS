@@ -1,22 +1,41 @@
 import type { VercelRequest,VercelResponse } from '@vercel/node'
-import crypto from 'node:crypto'
 import { createClient } from '@supabase/supabase-js'
 
-import { withSecurity } from '../../server/security'
+import { withSecurity } from '../../server/security.js'
 export const config={api:{bodyParser:false}}
-async function rawBody(req:VercelRequest){const chunks:Buffer[]=[];for await(const c of req)chunks.push(Buffer.from(c));return Buffer.concat(chunks)}
-function validSignature(body:string,header:string,secret:string){
+async function rawBody(req:VercelRequest){
+  const chunks:Uint8Array[]=[]
+  for await(const chunk of req as AsyncIterable<Uint8Array|string>){
+    chunks.push(typeof chunk==='string'?new TextEncoder().encode(chunk):new Uint8Array(chunk))
+  }
+  const total=chunks.reduce((sum,chunk)=>sum+chunk.byteLength,0)
+  const merged=new Uint8Array(total)
+  let offset=0
+  for(const chunk of chunks){merged.set(chunk,offset);offset+=chunk.byteLength}
+  return new TextDecoder().decode(merged)
+}
+
+function bytesToHex(bytes:Uint8Array){return Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('')}
+function constantTimeHexEqual(a:string,b:string){
+  if(a.length!==b.length)return false
+  let diff=0
+  for(let i=0;i<a.length;i++)diff|=a.charCodeAt(i)^b.charCodeAt(i)
+  return diff===0
+}
+
+async function validSignature(body:string,header:string,secret:string){
   const m=header.match(/t=(\d+),v1=([a-f0-9]+)/);if(!m)return false
-  const ts=Number(m[1]);if(Math.abs(Date.now()/1000-ts)>300)return false
-  const expected=crypto.createHmac('sha256',secret).update(String(ts)+body).digest('hex')
-  const a=Buffer.from(expected);const b=Buffer.from(m[2]);return a.length===b.length&&crypto.timingSafeEqual(a,b)
+  const ts=Number(m[1]);if(!Number.isFinite(ts)||Math.abs(Date.now()/1000-ts)>300)return false
+  const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(secret),{name:'HMAC',hash:'SHA-256'},false,['sign'])
+  const signature=await crypto.subtle.sign('HMAC',key,new TextEncoder().encode(String(ts)+body))
+  return constantTimeHexEqual(bytesToHex(new Uint8Array(signature)),m[2])
 }
 
 async function handler(req:VercelRequest,res:VercelResponse){
   if(req.method!=='POST')return res.status(405).end()
-  const body=(await rawBody(req)).toString('utf8')
+  const body=await rawBody(req)
   const signature=String(req.headers['wave-signature']||'')
-  if(!process.env.WAVE_WEBHOOK_SECRET||!validSignature(body,signature,process.env.WAVE_WEBHOOK_SECRET))return res.status(401).json({error:'Invalid signature'})
+  if(!process.env.WAVE_WEBHOOK_SECRET||!(await validSignature(body,signature,process.env.WAVE_WEBHOOK_SECRET)))return res.status(401).json({error:'Invalid signature'})
   let event:any
   try{event=JSON.parse(body)}catch{return res.status(400).json({error:'Invalid JSON'})}
 

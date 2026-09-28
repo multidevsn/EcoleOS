@@ -1,7 +1,7 @@
 import type {VercelRequest,VercelResponse} from '@vercel/node'
 import {createClient} from '@supabase/supabase-js'
 
-import { withSecurity } from '../../server/security'
+import { withSecurity } from '../../server/security.js'
 async function handler(req:VercelRequest,res:VercelResponse){
   if(req.method!=='GET')return res.status(405).json({error:'Method not allowed'})
   const auth=req.headers.authorization

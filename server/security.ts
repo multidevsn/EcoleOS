@@ -1,4 +1,3 @@
-import { createHash, randomUUID } from 'node:crypto'
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 
@@ -9,28 +8,30 @@ function adminClient(){
   return createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}})
 }
 
-function hash(value:string){
+async function hash(value:string){
   const salt=process.env.SECURITY_HASH_SALT||'ecole-os-security-default-salt'
-  return createHash('sha256').update(`${salt}:${value}`).digest('hex')
+  const input=new TextEncoder().encode(`${salt}:${value}`)
+  const digest=await crypto.subtle.digest('SHA-256',input)
+  return Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('')
 }
 
 export function requestId(req:VercelRequest){
   const incoming=String(req.headers['x-request-id']||'').trim()
-  return incoming.slice(0,120)||randomUUID()
+  return incoming.slice(0,120)||crypto.randomUUID()
 }
 
-export function securityHashes(req:VercelRequest){
+export async function securityHashes(req:VercelRequest){
   const forwarded=String(req.headers['x-forwarded-for']||'').split(',')[0].trim()
   const real=String(req.headers['x-real-ip']||'').trim()
   const ip=forwarded||real||'unknown'
   const ua=String(req.headers['user-agent']||'unknown')
-  return {ipHash:hash(ip),userAgentHash:hash(ua)}
+  return {ipHash:await hash(ip),userAgentHash:await hash(ua)}
 }
 
 export async function recordSecurityEvent(req:VercelRequest,input:{eventType:string;severity?:'info'|'warning'|'critical';actorUserId?:string|null;schoolId?:string|null;statusCode?:number;route?:string;metadata?:Record<string,unknown>;requestId?:string}){
   try{
     const admin=adminClient(); if(!admin)return
-    const {ipHash,userAgentHash}=securityHashes(req)
+    const {ipHash,userAgentHash}=await securityHashes(req)
     const severity=input.severity||'info'
     await admin.rpc('security_record_event',{
       p_event_type:input.eventType,

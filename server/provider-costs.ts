@@ -203,7 +203,7 @@ async function syncTwilio(period: ReturnType<typeof monthBounds>): Promise<Provi
     return { provider: 'twilio', period_start: period.startDate, period_end: period.endDate, currency: 'USD', amount: 0, amount_xof: null, basis: 'provider_reported', status: 'not_configured', units: {}, breakdown: {}, error_message: 'TWILIO_ACCOUNT_SID et TWILIO_AUTH_TOKEN requis.' }
   }
   try {
-    const basic = Buffer.from(`${sid}:${token}`).toString('base64')
+    const basic = btoa(`${sid}:${token}`)
     const url = new URL(`https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(sid)}/Usage/Records.json`)
     url.searchParams.set('StartDate', period.startDate)
     url.searchParams.set('EndDate', period.endDate)

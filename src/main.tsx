@@ -34,6 +34,8 @@ type ReferralInfo={code:string;status?:string}
 type AppData={profile:Profile|null;studentId:string|null;school:SchoolInfo|null;subscription:SubscriptionInfo|null;referral:ReferralInfo|null;grades:Grade[];schedule:ScheduleRow[];payments:Payment[];points:PointEvent[];foodItems:FoodItem[];orders:Order[];rewards:Reward[];loading:boolean;error:string|null}
 
 const roleLabels:Record<Role,string>={student:'Élève',parent:'Parent',teacher:'Professeur',admin:'Administration',director:'Directeur',cafeteria:'Cantine'}
+const isRole=(value:unknown):value is Role=>typeof value==='string' && Object.prototype.hasOwnProperty.call(roleLabels,value)
+const roleLabel=(value:unknown)=>isRole(value)?roleLabels[value]:String(value??'—')
 const nav:[Tab,string,React.ElementType][]=[['home','Accueil',School],['food','Food',ShoppingCart],['schedule','Emploi du temps',CalendarDays],['grades','Notes',GraduationCap],['payments','Paiements',WalletCards],['rewards','Impact',Gift],['members','Membres',Users],['agora','Agora',Lightbulb],['community','Communauté',MessageCircle],['pilotage','Pilotage',BarChart3],['ops','Ops',ServerCog],['account','Mon compte',UserRound]]
 const roleTabs:Record<Role,Tab[]>={student:['home','food','schedule','grades','payments','rewards','agora','community','account'],parent:['home','food','schedule','grades','payments','rewards','agora','community','account'],teacher:['home','schedule','grades','rewards','agora','community','account'],admin:['home','food','schedule','grades','payments','members','rewards','agora','community','account'],director:['home','payments','members','rewards','agora','community','pilotage','account'],cafeteria:['home','food','rewards','agora','community','account']}
 const canAccess=(role:Role,tab:Tab)=>roleTabs[role].includes(tab)
@@ -693,7 +695,7 @@ function SchoolMembers({role,session,mode}:{role:Role,session:any,mode:Mode}){
       </section>
     </div>
     <section className="panel members-list"><div className="panel-head"><div><h3>Annuaire actuel</h3><span className="panel-subtitle">{rows.length} personne(s) enregistrée(s) dans l’établissement.</span></div></div>
-      {loading?<div className="skeleton mini"><i/><i/></div>:rows.length?<div>{rows.slice(0,100).map((r:any)=><div className="member-row" key={r.id}><div className="member-avatar">{firstLetters(r.full_name)}</div><div><b>{r.full_name}</b><span>{roleLabels[r.role]||r.role}{r.student_code?' · '+r.student_code:''}</span></div><small>{r.email||'Pas d’email'}</small><em className={r.status==='linked'?'ok':r.status==='invited'?'pending':''}>{r.status}</em></div>)}</div>:<Empty text="Aucun membre enregistré pour le moment."/>}
+      {loading?<div className="skeleton mini"><i/><i/></div>:rows.length?<div>{rows.slice(0,100).map((r:any)=><div className="member-row" key={r.id}><div className="member-avatar">{firstLetters(r.full_name)}</div><div><b>{r.full_name}</b><span>{roleLabel(r.role)}{r.student_code?' · '+r.student_code:''}</span></div><small>{r.email||'Pas d’email'}</small><em className={r.status==='linked'?'ok':r.status==='invited'?'pending':''}>{r.status}</em></div>)}</div>:<Empty text="Aucun membre enregistré pour le moment."/>}
     </section>
   </>
 }
