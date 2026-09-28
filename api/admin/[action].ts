@@ -221,20 +221,34 @@ async function traffic(req: VercelRequest, res: VercelResponse) {
 
     const days = Math.min(30, Math.max(1, Number(new URL(String(req.url || '/'), 'http://localhost').searchParams.get('days')) || 7))
     const range = { since: dayString(days - 1), until: dayString(0) }
-    const [daily, pages, countries, devices, referrers] = await Promise.all([
-      vercelAnalytics('visits', 'aggregate', { ...range, by: 'day' }),
-      vercelAnalytics('visits', 'aggregate', { ...range, by: 'route', limit: '8' }),
-      vercelAnalytics('visits', 'aggregate', { ...range, by: 'country', limit: '6' }),
-      vercelAnalytics('visits', 'aggregate', { ...range, by: 'deviceType', limit: '4' }),
-      vercelAnalytics('visits', 'aggregate', { ...range, by: 'referrerHostname', limit: '6' }),
-    ])
+    const groupings: Array<[string, string, string]> = [
+      ['pages', 'route', '8'],
+      ['countries', 'country', '6'],
+      ['devices', 'deviceType', '4'],
+      ['referrers', 'referrerHostname', '6'],
+    ]
+    const daily = await vercelAnalytics('visits', 'aggregate', { ...range, by: 'day' })
+    const settled = await Promise.allSettled(groupings.map(([, by, limit]) => vercelAnalytics('visits', 'aggregate', { ...range, by, limit })))
+    const grouped: Record<string, TrafficRow[]> = {}
+    const diagnostics: Record<string, string> = {}
+    settled.forEach((result, index) => {
+      const [name, by] = groupings[index]
+      if (result.status === 'fulfilled') {
+        grouped[name] = result.value
+        diagnostics[name] = `${result.value.length} ligne(s)` + (result.value[0] ? ` — champs: ${Object.keys(result.value[0]).join(', ')}` : '')
+      } else {
+        grouped[name] = []
+        diagnostics[name] = `ÉCHEC (${by}) : ${result.reason?.message || 'erreur inconnue'}`
+      }
+    })
+    const { pages, countries, devices, referrers } = grouped
     const sum = (rows: TrafficRow[], key: 'pageviews' | 'visitors') => rows.reduce((total, row) => total + Number(row[key] || 0), 0)
     return json(res, 200, {
       ok: true,
       configured: true,
       range: { ...range, days },
       totals: { pageviews: sum(daily, 'pageviews'), visitors: sum(daily, 'visitors') },
-      daily, pages, countries, devices, referrers,
+      daily, pages, countries, devices, referrers, diagnostics,
     })
   } catch (error: any) {
     const status = Number(error?.status) || 500

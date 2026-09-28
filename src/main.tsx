@@ -794,9 +794,14 @@ function TrafficPanel({mode,session}:{mode:Mode,session:any}){
   const nf=(n:number)=>new Intl.NumberFormat('fr-FR').format(n||0)
   const daily:any[]=data?.daily||[]
   const maxDay=Math.max(1,...daily.map(d=>Number(d.pageviews||0)))
-  const list=(rows:any[],key:string,empty='(inconnu)')=>{
-    const max=Math.max(1,...(rows||[]).map(r=>Number(r.pageviews||0)))
-    return (rows||[]).map((r:any,i:number)=><MiniBar key={i} value={Number(r.pageviews||0)} max={max} label={String(r[key]||empty)} meta={nf(r.pageviews)+' vues'}/>)
+  const countOf=(r:any)=>Number(r?.pageviews??r?.visits??r?.count??r?.visitors??0)
+  const list=(rows:any[],key:string,name:string,empty='(inconnu)')=>{
+    if(!rows?.length){
+      const why=data?.diagnostics?.[name]
+      return <p className="traffic-empty">Aucune donnée{why?.startsWith('ÉCHEC')?' — '+why:''}</p>
+    }
+    const max=Math.max(1,...rows.map(countOf))
+    return rows.map((r:any,i:number)=><MiniBar key={i} value={countOf(r)} max={max} label={String(r[key]||empty)} meta={nf(countOf(r))+' vues'}/>)
   }
   return <section className="panel">
     <div className="panel-head"><div><h3>Trafic du site</h3><span className="panel-subtitle">Visiteurs et pages vues (Vercel Web Analytics, sans cookies). Dernière mise à jour : à l’ouverture de la page.</span></div><BarChart3 size={18}/></div>
@@ -806,11 +811,12 @@ function TrafficPanel({mode,session}:{mode:Mode,session:any}){
       <div className="autopilot-grid"><div><span>Visiteurs</span><b>{nf(data.totals?.visitors)}</b></div><div><span>Pages vues</span><b>{nf(data.totals?.pageviews)}</b></div></div>
       <div className="traffic-chart" aria-label="Pages vues par jour">{daily.map((d,i)=><div key={i} className="traffic-col" title={new Date(d.timestamp).toLocaleDateString('fr-FR')+' : '+nf(d.pageviews)+' vues'}><i style={{height:`${Math.max(4,Number(d.pageviews||0)/maxDay*100)}%`}}/></div>)}</div>
       {!daily.length&&<div className="alert">Aucune donnée pour cette période. Vérifiez que Web Analytics est activé et que le site a reçu des visites.</div>}
+      {data.diagnostics&&['pages','countries','devices','referrers'].some(k=>!data[k]?.length)&&<details className="traffic-diag"><summary>Diagnostic des listes vides</summary>{Object.entries(data.diagnostics).map(([k,v])=><div key={k}><b>{k}</b> : {String(v)}</div>)}</details>}
       <div className="grid two">
-        <div><h4 className="traffic-h">Pages les plus vues</h4>{list(data.pages,'route')}</div>
-        <div><h4 className="traffic-h">Pays</h4>{list(data.countries,'country')}</div>
-        <div><h4 className="traffic-h">Appareils</h4>{list(data.devices,'deviceType')}</div>
-        <div><h4 className="traffic-h">Sources</h4>{list(data.referrers,'referrerHostname','(direct)')}</div>
+        <div><h4 className="traffic-h">Pages les plus vues</h4>{list(data.pages,'route','pages')}</div>
+        <div><h4 className="traffic-h">Pays</h4>{list(data.countries,'country','countries')}</div>
+        <div><h4 className="traffic-h">Appareils</h4>{list(data.devices,'deviceType','devices')}</div>
+        <div><h4 className="traffic-h">Sources</h4>{list(data.referrers,'referrerHostname','referrers','(direct)')}</div>
       </div>
     </>}
   </section>
