@@ -175,6 +175,78 @@ async function tech(req: VercelRequest, res: VercelResponse) {
   }
 }
 
+type TrafficRow = { pageviews?: number; visitors?: number; [key: string]: unknown }
+
+async function vercelAnalytics(dataset: 'visits', endpoint: 'aggregate', params: Record<string, string>) {
+  const token = env('VERCEL_API_TOKEN')
+  const projectId = env('VERCEL_PROJECT_ID')
+  const teamId = env('VERCEL_ANALYTICS_TEAM_ID')
+  const url = new URL(`https://api.vercel.com/v1/query/web-analytics/${dataset}/${endpoint}`)
+  url.searchParams.set('projectId', projectId)
+  if (teamId) url.searchParams.set('teamId', teamId)
+  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value)
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 8000)
+  try {
+    const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal })
+    const body: any = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      const message = body?.error?.message || body?.message || `Vercel API ${response.status}`
+      throw Object.assign(new Error(message), { status: response.status })
+    }
+    return (Array.isArray(body?.data) ? body.data : []) as TrafficRow[]
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+function dayString(offsetDays: number) {
+  return new Date(Date.now() - offsetDays * 86400000).toISOString().slice(0, 10)
+}
+
+async function traffic(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== 'GET') return json(res, 405, { error: 'Method not allowed' })
+  const admin = adminClient()
+  if (!admin) return json(res, 503, { error: 'Supabase serveur non configuré.' })
+  const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '')
+  if (!token) return json(res, 401, { error: 'Authentification requise.' })
+  try {
+    const { data: userData, error: userError } = await admin.auth.getUser(token)
+    if (userError || !userData.user) return json(res, 401, { error: 'Session invalide.' })
+    if (!allowedEmails().includes(String(userData.user.email || '').toLowerCase())) return json(res, 403, { error: 'Accès réservé à l’administrateur technique.' })
+
+    if (!env('VERCEL_API_TOKEN') || !env('VERCEL_PROJECT_ID')) {
+      return json(res, 200, { ok: true, configured: false, message: 'Ajoutez VERCEL_API_TOKEN et VERCEL_PROJECT_ID dans les variables d’environnement Vercel.' })
+    }
+
+    const days = Math.min(30, Math.max(1, Number(new URL(String(req.url || '/'), 'http://localhost').searchParams.get('days')) || 7))
+    const range = { since: dayString(days - 1), until: dayString(0) }
+    const [daily, pages, countries, devices, referrers] = await Promise.all([
+      vercelAnalytics('visits', 'aggregate', { ...range, by: 'day' }),
+      vercelAnalytics('visits', 'aggregate', { ...range, by: 'route', limit: '8' }),
+      vercelAnalytics('visits', 'aggregate', { ...range, by: 'country', limit: '6' }),
+      vercelAnalytics('visits', 'aggregate', { ...range, by: 'deviceType', limit: '4' }),
+      vercelAnalytics('visits', 'aggregate', { ...range, by: 'referrerHostname', limit: '6' }),
+    ])
+    const sum = (rows: TrafficRow[], key: 'pageviews' | 'visitors') => rows.reduce((total, row) => total + Number(row[key] || 0), 0)
+    return json(res, 200, {
+      ok: true,
+      configured: true,
+      range: { ...range, days },
+      totals: { pageviews: sum(daily, 'pageviews'), visitors: sum(daily, 'visitors') },
+      daily, pages, countries, devices, referrers,
+    })
+  } catch (error: any) {
+    const status = Number(error?.status) || 500
+    const message = status === 401 || status === 403
+      ? 'Token Vercel refusé : vérifiez VERCEL_API_TOKEN et son périmètre.'
+      : status === 404 ? 'Projet introuvable : vérifiez VERCEL_PROJECT_ID.'
+      : error?.name === 'AbortError' ? 'L’API Vercel ne répond pas (délai dépassé).'
+      : error?.message || 'Impossible de charger le trafic.'
+    return json(res, 502, { error: message })
+  }
+}
+
 export default async function adminRouter(req: VercelRequest, res: VercelResponse) {
   const route = routeFromRequest(req)
   const action = actionFromRequest(req)
@@ -182,6 +254,7 @@ export default async function adminRouter(req: VercelRequest, res: VercelRespons
     'provider-costs': providerCosts,
     security: securitySummary,
     tech,
+    traffic,
   }
   const handler = handlers[action]
   if (!handler) return json(res, 404, { error: 'Route admin inconnue.' })
