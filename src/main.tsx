@@ -1,5 +1,6 @@
 import React, {useEffect, useMemo, useState} from 'react'
 import {createRoot} from 'react-dom/client'
+import {Analytics} from '@vercel/analytics/react'
 import {supabase} from './lib/supabase'
 import {trackUsage} from './lib/telemetry'
 import {BookOpen, CalendarDays, CheckCircle2, ChevronRight, CircleDollarSign, ClipboardList, Clock3, Gift, GraduationCap, KeyRound, Landmark, LogOut, Mail, Menu, Package, Save, School, ShieldCheck, ShoppingCart, FileUp, UserPlus, RefreshCw, Check, AlertTriangle, Sparkles, Star, UserRound, Users, UtensilsCrossed, WalletCards, X, Lightbulb, MessageSquarePlus, ThumbsUp, BarChart3, Palette, ListChecks, Gauge, Activity, ServerCog, MessageCircle, Megaphone, Send, Flag, ShieldAlert, Search, Info, UsersRound, LockKeyhole} from 'lucide-react'
@@ -1173,6 +1174,7 @@ function Community({role,mode,session,profile,schoolId}:{role:Role,mode:Mode,ses
         </>:<div className="community-no-selection"><MessageCircle size={26}/><h3>Sélectionnez une conversation</h3><p>Choisissez un espace à gauche pour lire les messages et participer à la discussion.</p></div>}
       </section>
     </div>
+    <Analytics />
   </div>
 }
 
