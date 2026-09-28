@@ -1,3 +1,4 @@
+import { env } from '../../server/env.js'
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 
@@ -13,7 +14,7 @@ function makeCode(name: string) {
 
 async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return json(res, 405, { error: 'Method not allowed' })
-  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_PUBLISHABLE_KEY || !process.env.SUPABASE_SECRET_KEY) {
+  if (!env('SUPABASE_URL') || !env('SUPABASE_PUBLISHABLE_KEY') || !env('SUPABASE_SECRET_KEY')) {
     return json(res, 503, { error: 'Supabase serveur non configuré.' })
   }
 
@@ -28,10 +29,10 @@ async function handler(req: VercelRequest, res: VercelResponse) {
   const referralCode = String(body.referral || '').trim().toUpperCase()
   if (!schoolName || !city) return json(res, 400, { error: 'Nom de l’école et ville requis.' })
 
-  const userClient = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_PUBLISHABLE_KEY, {
+  const userClient = createClient(env('SUPABASE_URL'), env('SUPABASE_PUBLISHABLE_KEY'), {
     global: { headers: { Authorization: `Bearer ${token}` } },
   })
-  const admin = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SECRET_KEY)
+  const admin = createClient(env('SUPABASE_URL'), env('SUPABASE_SECRET_KEY'))
 
   try {
     const { data: userData, error: userError } = await userClient.auth.getUser(token)

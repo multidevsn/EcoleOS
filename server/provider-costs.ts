@@ -1,3 +1,4 @@
+import { env } from './env.js'
 export type ProviderSnapshot = {
   provider: string
   period_start: string
@@ -14,7 +15,7 @@ export type ProviderSnapshot = {
 }
 
 function numberEnv(name: string, fallback = 0) {
-  const value = Number(process.env[name])
+  const value = Number(env(name))
   return Number.isFinite(value) ? value : fallback
 }
 
@@ -64,8 +65,8 @@ function extractNumber(record: any, keys: string[]) {
 }
 
 async function syncVercel(period: ReturnType<typeof monthBounds>): Promise<ProviderSnapshot> {
-  const token = process.env.VERCEL_BILLING_TOKEN
-  const teamId = process.env.VERCEL_TEAM_ID
+  const token = env('VERCEL_BILLING_TOKEN')
+  const teamId = env('VERCEL_TEAM_ID')
   if (!token || !teamId) {
     return { provider: 'vercel', period_start: period.startDate, period_end: period.endDate, currency: 'USD', amount: 0, amount_xof: null, basis: 'provider_reported', status: 'not_configured', units: {}, breakdown: {}, error_message: 'VERCEL_BILLING_TOKEN et VERCEL_TEAM_ID requis.' }
   }
@@ -94,7 +95,7 @@ async function syncVercel(period: ReturnType<typeof monthBounds>): Promise<Provi
 }
 
 function supabasePlanUsd(plan: string) {
-  const override = process.env.SUPABASE_PLAN_USD_MONTHLY
+  const override = env('SUPABASE_PLAN_USD_MONTHLY')
   if (override && Number.isFinite(Number(override))) return Number(override)
   if (plan === 'pro') return 25
   if (plan === 'team') return 599
@@ -102,9 +103,9 @@ function supabasePlanUsd(plan: string) {
 }
 
 async function syncSupabase(period: ReturnType<typeof monthBounds>): Promise<ProviderSnapshot> {
-  const token = process.env.SUPABASE_MGMT_TOKEN
-  const orgSlug = process.env.SUPABASE_ORG_SLUG
-  const refs = String(process.env.SUPABASE_PROJECT_REFS || process.env.SUPABASE_PROJECT_REF || '').split(',').map(x => x.trim()).filter(Boolean)
+  const token = env('SUPABASE_MGMT_TOKEN')
+  const orgSlug = env('SUPABASE_ORG_SLUG')
+  const refs = String(env('SUPABASE_PROJECT_REFS') || env('SUPABASE_PROJECT_REF') || '').split(',').map(x => x.trim()).filter(Boolean)
   if (!token || !orgSlug || !refs.length) {
     return { provider: 'supabase', period_start: period.startDate, period_end: period.endDate, currency: 'USD', amount: 0, amount_xof: null, basis: 'usage_derived', status: 'not_configured', units: {}, breakdown: {}, error_message: 'SUPABASE_MGMT_TOKEN, SUPABASE_ORG_SLUG et SUPABASE_PROJECT_REFS requis.' }
   }
@@ -138,7 +139,7 @@ async function syncSupabase(period: ReturnType<typeof monthBounds>): Promise<Pro
 }
 
 function resendPlanConfig() {
-  const plan = String(process.env.RESEND_PLAN || 'free').toLowerCase()
+  const plan = String(env('RESEND_PLAN') || 'free').toLowerCase()
   const table: Record<string, { monthly: number; included: number; overagePer1000: number }> = {
     free: { monthly: 0, included: 3000, overagePer1000: 0 },
     pro: { monthly: 20, included: 50000, overagePer1000: 0.90 },
@@ -154,7 +155,7 @@ function resendPlanConfig() {
 }
 
 async function syncResend(period: ReturnType<typeof monthBounds>): Promise<ProviderSnapshot> {
-  const token = process.env.RESEND_API_KEY
+  const token = env('RESEND_API_KEY')
   if (!token) {
     return { provider: 'resend', period_start: period.startDate, period_end: period.endDate, currency: 'USD', amount: 0, amount_xof: null, basis: 'usage_derived', status: 'not_configured', units: {}, breakdown: {}, error_message: 'RESEND_API_KEY requis.' }
   }
@@ -197,8 +198,8 @@ async function syncResend(period: ReturnType<typeof monthBounds>): Promise<Provi
 }
 
 async function syncTwilio(period: ReturnType<typeof monthBounds>): Promise<ProviderSnapshot> {
-  const sid = process.env.TWILIO_ACCOUNT_SID
-  const token = process.env.TWILIO_AUTH_TOKEN
+  const sid = env('TWILIO_ACCOUNT_SID')
+  const token = env('TWILIO_AUTH_TOKEN')
   if (!sid || !token) {
     return { provider: 'twilio', period_start: period.startDate, period_end: period.endDate, currency: 'USD', amount: 0, amount_xof: null, basis: 'provider_reported', status: 'not_configured', units: {}, breakdown: {}, error_message: 'TWILIO_ACCOUNT_SID et TWILIO_AUTH_TOKEN requis.' }
   }

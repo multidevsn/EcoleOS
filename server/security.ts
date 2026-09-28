@@ -1,15 +1,16 @@
+import { env } from './env.js'
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 
 function adminClient(){
-  const url=process.env.SUPABASE_URL
-  const key=process.env.SUPABASE_SECRET_KEY
+  const url=env('SUPABASE_URL')
+  const key=env('SUPABASE_SECRET_KEY')
   if(!url||!key)return null
   return createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}})
 }
 
 async function hash(value:string){
-  const salt=process.env.SECURITY_HASH_SALT||'ecole-os-security-default-salt'
+  const salt=env('SECURITY_HASH_SALT')||'ecole-os-security-default-salt'
   const input=new TextEncoder().encode(`${salt}:${value}`)
   const digest=await crypto.subtle.digest('SHA-256',input)
   return Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('')

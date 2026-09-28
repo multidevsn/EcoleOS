@@ -1,3 +1,4 @@
+import { env } from '../../server/env.js'
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 
@@ -6,16 +7,16 @@ function json(res:VercelResponse,status:number,body:unknown){return res.status(s
 
 async function handler(req:VercelRequest,res:VercelResponse){
   if(req.method!=='POST') return json(res,405,{error:'Method not allowed'})
-  if(!process.env.WAVE_API_KEY) return json(res,503,{error:'Wave non configuré : ajoute WAVE_API_KEY côté serveur.'})
-  if(!process.env.SUPABASE_URL||!process.env.SUPABASE_PUBLISHABLE_KEY||!process.env.SUPABASE_SECRET_KEY) return json(res,503,{error:'Supabase serveur non configuré : renseigne SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY et SUPABASE_SECRET_KEY.'})
+  if(!env('WAVE_API_KEY')) return json(res,503,{error:'Wave non configuré : ajoute WAVE_API_KEY côté serveur.'})
+  if(!env('SUPABASE_URL')||!env('SUPABASE_PUBLISHABLE_KEY')||!env('SUPABASE_SECRET_KEY')) return json(res,503,{error:'Supabase serveur non configuré : renseigne SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY et SUPABASE_SECRET_KEY.'})
 
   const auth=String(req.headers.authorization||'')
   const token=auth.startsWith('Bearer ')?auth.slice(7):''
   if(!token)return json(res,401,{error:'Authentification requise.'})
 
   try{
-    const userClient=createClient(process.env.SUPABASE_URL,process.env.SUPABASE_PUBLISHABLE_KEY,{global:{headers:{Authorization:`Bearer ${token}`}}})
-    const admin=createClient(process.env.SUPABASE_URL,process.env.SUPABASE_SECRET_KEY)
+    const userClient=createClient(env('SUPABASE_URL'),env('SUPABASE_PUBLISHABLE_KEY'),{global:{headers:{Authorization:`Bearer ${token}`}}})
+    const admin=createClient(env('SUPABASE_URL'),env('SUPABASE_SECRET_KEY'))
     const {data:{user},error:userError}=await userClient.auth.getUser(token)
     if(userError||!user)return json(res,401,{error:'Session invalide ou expirée.'})
 
@@ -82,10 +83,10 @@ async function handler(req:VercelRequest,res:VercelResponse){
       return json(res,400,{error:'Type de paiement inconnu.'})
     }
 
-    const base=process.env.APP_URL||`https://${req.headers.host}`
+    const base=env('APP_URL')||`https://${req.headers.host}`
     const waveResponse=await fetch('https://api.wave.com/v1/checkout/sessions',{
       method:'POST',
-      headers:{Authorization:`Bearer ${process.env.WAVE_API_KEY}`,'Content-Type':'application/json'},
+      headers:{Authorization:`Bearer ${env('WAVE_API_KEY')}`,'Content-Type':'application/json'},
       body:JSON.stringify({amount:String(amount),currency:'XOF',client_reference:clientReference,success_url:`${base}/?payment=success`,error_url:`${base}/?payment=error`})
     })
     const wave=await waveResponse.json()

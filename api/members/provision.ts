@@ -1,3 +1,4 @@
+import { env } from '../../server/env.js'
 import type { VercelRequest,VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 import { withSecurity } from '../../server/security.js'
@@ -7,8 +8,8 @@ type MemberInput={role:MemberRole;full_name:string;email?:string;phone?:string;s
 function json(res:VercelResponse,status:number,body:unknown){return res.status(status).json(body)}
 function normalizeEmail(value?:string){const v=String(value||'').trim().toLowerCase();return v||null}
 function server(){
-  if(!process.env.SUPABASE_URL||!process.env.SUPABASE_SECRET_KEY)throw new Error('Supabase serveur non configuré.')
-  return createClient(process.env.SUPABASE_URL,process.env.SUPABASE_SECRET_KEY,{auth:{persistSession:false,autoRefreshToken:false}})
+  if(!env('SUPABASE_URL')||!env('SUPABASE_SECRET_KEY'))throw new Error('Supabase serveur non configuré.')
+  return createClient(env('SUPABASE_URL'),env('SUPABASE_SECRET_KEY'),{auth:{persistSession:false,autoRefreshToken:false}})
 }
 async function context(req:VercelRequest){
   const auth=String(req.headers.authorization||'')
@@ -69,7 +70,7 @@ async function inviteAndLink(admin:any,enrollment:any){
     if(profile.data?.role&&profile.data.role!==enrollment.role)throw new Error('Ce compte existe déjà avec le rôle '+profile.data.role+'.')
   }
   if(!userId){
-    const base=String(process.env.APP_URL||'').replace(/\/$/,'')
+    const base=String(env('APP_URL')||'').replace(/\/$/,'')
     const options:any={data:{full_name:enrollment.full_name,role:enrollment.role,school_id:enrollment.school_id,enrollment_id:enrollment.id}}
     if(base)options.redirectTo=base+'/'
     const invite=await admin.auth.admin.inviteUserByEmail(enrollment.email,options)

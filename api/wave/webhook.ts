@@ -1,3 +1,4 @@
+import { env } from '../../server/env.js'
 import type { VercelRequest,VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 
@@ -35,12 +36,12 @@ async function handler(req:VercelRequest,res:VercelResponse){
   if(req.method!=='POST')return res.status(405).end()
   const body=await rawBody(req)
   const signature=String(req.headers['wave-signature']||'')
-  if(!process.env.WAVE_WEBHOOK_SECRET||!(await validSignature(body,signature,process.env.WAVE_WEBHOOK_SECRET)))return res.status(401).json({error:'Invalid signature'})
+  if(!env('WAVE_WEBHOOK_SECRET')||!(await validSignature(body,signature,env('WAVE_WEBHOOK_SECRET'))))return res.status(401).json({error:'Invalid signature'})
   let event:any
   try{event=JSON.parse(body)}catch{return res.status(400).json({error:'Invalid JSON'})}
 
-  if(!process.env.SUPABASE_URL||!process.env.SUPABASE_SECRET_KEY)return res.status(503).json({error:'Supabase secret server key non configurée.'})
-  const admin=createClient(process.env.SUPABASE_URL,process.env.SUPABASE_SECRET_KEY)
+  if(!env('SUPABASE_URL')||!env('SUPABASE_SECRET_KEY'))return res.status(503).json({error:'Supabase secret server key non configurée.'})
+  const admin=createClient(env('SUPABASE_URL'),env('SUPABASE_SECRET_KEY'))
 
   try{
     // Idempotence : le même événement Wave ne doit pas être appliqué deux fois.

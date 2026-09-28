@@ -1,3 +1,4 @@
+import { env } from '../../server/env.js'
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 
@@ -6,10 +7,10 @@ function json(res: VercelResponse, status: number, body: unknown) { return res.s
 
 async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') return json(res, 405, { error: 'Method not allowed' })
-  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SECRET_KEY) return json(res, 503, { error: 'Supabase serveur non configuré.' })
+  if (!env('SUPABASE_URL') || !env('SUPABASE_SECRET_KEY')) return json(res, 503, { error: 'Supabase serveur non configuré.' })
   const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '')
   if (!token) return json(res, 401, { error: 'Authentification requise.' })
-  const admin = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SECRET_KEY, { auth: { persistSession: false, autoRefreshToken: false } })
+  const admin = createClient(env('SUPABASE_URL'), env('SUPABASE_SECRET_KEY'), { auth: { persistSession: false, autoRefreshToken: false } })
   try {
     const { data: userData, error: userError } = await admin.auth.getUser(token)
     if (userError || !userData.user) return json(res, 401, { error: 'Session invalide.' })

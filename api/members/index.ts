@@ -1,3 +1,4 @@
+import { env } from '../../server/env.js'
 import type { VercelRequest,VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 
@@ -5,8 +6,8 @@ import { withSecurity } from '../../server/security.js'
 function json(res:VercelResponse,status:number,body:unknown){return res.status(status).json(body)}
 
 function server(){
-  if(!process.env.SUPABASE_URL||!process.env.SUPABASE_SECRET_KEY)throw new Error('Supabase serveur non configuré.')
-  return createClient(process.env.SUPABASE_URL,process.env.SUPABASE_SECRET_KEY,{auth:{persistSession:false,autoRefreshToken:false}})
+  if(!env('SUPABASE_URL')||!env('SUPABASE_SECRET_KEY'))throw new Error('Supabase serveur non configuré.')
+  return createClient(env('SUPABASE_URL'),env('SUPABASE_SECRET_KEY'),{auth:{persistSession:false,autoRefreshToken:false}})
 }
 
 async function actor(req:VercelRequest){
