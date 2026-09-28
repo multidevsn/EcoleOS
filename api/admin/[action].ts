@@ -221,6 +221,9 @@ async function traffic(req: VercelRequest, res: VercelResponse) {
 
     const days = Math.min(30, Math.max(1, Number(new URL(String(req.url || '/'), 'http://localhost').searchParams.get('days')) || 7))
     const range = { since: dayString(days - 1), until: dayString(0) }
+    // Pour les groupements sans granularité temporelle (route, pays...), une date `until` nue peut être lue
+    // comme le DÉBUT de la journée et exclure les visites d'aujourd'hui : on demande jusqu'à demain.
+    const groupRange = { since: range.since, until: dayString(-1) }
     const groupings: Array<[string, string, string]> = [
       ['pages', 'route', '8'],
       ['countries', 'country', '6'],
@@ -228,7 +231,7 @@ async function traffic(req: VercelRequest, res: VercelResponse) {
       ['referrers', 'referrerHostname', '6'],
     ]
     const daily = await vercelAnalytics('visits', 'aggregate', { ...range, by: 'day' })
-    const settled = await Promise.allSettled(groupings.map(([, by, limit]) => vercelAnalytics('visits', 'aggregate', { ...range, by, limit })))
+    const settled = await Promise.allSettled(groupings.map(([, by, limit]) => vercelAnalytics('visits', 'aggregate', { ...groupRange, by, limit })))
     const grouped: Record<string, TrafficRow[]> = {}
     const diagnostics: Record<string, string> = {}
     settled.forEach((result, index) => {
