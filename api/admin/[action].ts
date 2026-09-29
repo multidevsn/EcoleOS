@@ -225,7 +225,7 @@ async function traffic(req: VercelRequest, res: VercelResponse) {
     // comme le DÉBUT de la journée et exclure les visites d'aujourd'hui : on demande jusqu'à demain.
     const groupRange = { since: range.since, until: dayString(-1) }
     const groupings: Array<[string, string, string]> = [
-      ['pages', 'route', '8'],
+      ['pages', 'requestPath', '8'],
       ['countries', 'country', '6'],
       ['devices', 'deviceType', '4'],
       ['referrers', 'referrerHostname', '6'],

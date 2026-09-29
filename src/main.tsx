@@ -4,6 +4,7 @@ import {supabase} from './lib/supabase'
 import {trackUsage} from './lib/telemetry'
 import {Analytics} from '@vercel/analytics/react'
 import {SpeedInsights} from '@vercel/speed-insights/react'
+import {applyOwnerParam,isOwnerDevice,setOwnerDevice,skipOwnerVisits} from './lib/ownerTraffic'
 import {BookOpen, CalendarDays, CheckCircle2, ChevronRight, CircleDollarSign, ClipboardList, Clock3, Gift, GraduationCap, KeyRound, Landmark, LogOut, Mail, Menu, Package, Save, School, ShieldCheck, ShoppingCart, FileUp, UserPlus, RefreshCw, Check, AlertTriangle, Sparkles, Star, UserRound, Users, UtensilsCrossed, WalletCards, X, Lightbulb, MessageSquarePlus, ThumbsUp, BarChart3, Palette, ListChecks, Gauge, Activity, ServerCog, MessageCircle, Megaphone, Send, Flag, ShieldAlert, Search, Info, UsersRound, LockKeyhole} from 'lucide-react'
 import '@fontsource-variable/bricolage-grotesque/wght.css'
 import '@fontsource/caveat/600.css'
@@ -451,7 +452,7 @@ function App(){
     async function detect(){
       if(mode==='demo'){if(alive)setPlatformAdmin(role==='admin');return}
       if(!session?.access_token){if(alive)setPlatformAdmin(false);return}
-      try{const res=await fetch('/api/admin/tech',{headers:{Authorization:`Bearer ${session.access_token}`}});if(alive)setPlatformAdmin(res.ok)}catch{if(alive)setPlatformAdmin(false)}
+      try{const res=await fetch('/api/admin/tech',{headers:{Authorization:`Bearer ${session.access_token}`}});if(res.ok)setOwnerDevice(true);if(alive)setPlatformAdmin(res.ok)}catch{if(alive)setPlatformAdmin(false)}
     }
     detect()
     return()=>{alive=false}
@@ -770,6 +771,7 @@ function TechnicalOps({mode,session}:{mode:Mode,session:any}){
   </>
 }
 function TrafficPanel({mode,session}:{mode:Mode,session:any}){
+  const [owner,setOwner]=useState(isOwnerDevice())
   const [loading,setLoading]=useState(true),[error,setError]=useState(''),[data,setData]=useState<any|null>(null),[days,setDays]=useState(7)
   useEffect(()=>{
     let alive=true
@@ -801,11 +803,12 @@ function TrafficPanel({mode,session}:{mode:Mode,session:any}){
       return <p className="traffic-empty">Aucune donnée{why?.startsWith('ÉCHEC')?' — '+why:''}</p>
     }
     const max=Math.max(1,...rows.map(countOf))
-    return rows.map((r:any,i:number)=><MiniBar key={i} value={countOf(r)} max={max} label={String(r[key]||empty)} meta={nf(countOf(r))+' vues'}/>)
+    return rows.map((r:any,i:number)=><MiniBar key={i} value={countOf(r)} max={max} label={String(r[key]||empty)} meta={nf(countOf(r))+' vues'+(Number(r?.visitors)?' · '+nf(Number(r.visitors))+' vis.':'')}/>)
   }
   return <section className="panel">
     <div className="panel-head"><div><h3>Trafic du site</h3><span className="panel-subtitle">Visiteurs et pages vues (Vercel Web Analytics, sans cookies). Dernière mise à jour : à l’ouverture de la page.</span></div><BarChart3 size={18}/></div>
     <div className="traffic-range">{[7,14,30].map(n=><button key={n} className={days===n?'active':''} onClick={()=>setDays(n)}>{n} jours</button>)}</div>
+    <div className="traffic-owner"><span>{owner?'Cet appareil est exclu des statistiques : vos visites et tests ne sont plus comptés.':'Cet appareil est compté dans les statistiques.'}</span><button onClick={()=>{setOwnerDevice(!owner);setOwner(!owner)}}>{owner?'Recompter cet appareil':'Exclure cet appareil'}</button></div>
     {error&&<div className="alert error">{error}</div>}
     {loading?<div className="skeleton"><i/><i/></div>:data&&data.configured===false?<div className="alert">{data.message}</div>:data&&<>
       <div className="autopilot-grid"><div><span>Visiteurs</span><b>{nf(data.totals?.visitors)}</b></div><div><span>Pages vues</span><b>{nf(data.totals?.pageviews)}</b></div></div>
@@ -813,7 +816,7 @@ function TrafficPanel({mode,session}:{mode:Mode,session:any}){
       {!daily.length&&<div className="alert">Aucune donnée pour cette période. Vérifiez que Web Analytics est activé et que le site a reçu des visites.</div>}
       {data.diagnostics&&['pages','countries','devices','referrers'].some(k=>!data[k]?.length)&&<details className="traffic-diag"><summary>Diagnostic des listes vides</summary>{Object.entries(data.diagnostics).map(([k,v])=><div key={k}><b>{k}</b> : {String(v)}</div>)}</details>}
       <div className="grid two">
-        <div><h4 className="traffic-h">Pages les plus vues</h4>{list(data.pages,'route','pages')}</div>
+        <div><h4 className="traffic-h">Pages les plus vues</h4>{list(data.pages,'requestPath','pages','/')}</div>
         <div><h4 className="traffic-h">Pays</h4>{list(data.countries,'country','countries')}</div>
         <div><h4 className="traffic-h">Appareils</h4>{list(data.devices,'deviceType','devices')}</div>
         <div><h4 className="traffic-h">Sources</h4>{list(data.referrers,'referrerHostname','referrers','(direct)')}</div>
@@ -1231,4 +1234,5 @@ function Community({role,mode,session,profile,schoolId}:{role:Role,mode:Mode,ses
   </div>
 }
 
-createRoot(document.getElementById('root')!).render(<ErrorBoundary><App/><Analytics/><SpeedInsights/></ErrorBoundary>)
+applyOwnerParam()
+createRoot(document.getElementById('root')!).render(<ErrorBoundary><App/><Analytics beforeSend={skipOwnerVisits}/><SpeedInsights beforeSend={skipOwnerVisits}/></ErrorBoundary>)

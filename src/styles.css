@@ -1037,3 +1037,6 @@ html[data-theme="epure"] .main:before{display:none}html[data-theme="epure"] .rol
 .traffic-diag{margin:8px 0 14px;font-size:12px;color:var(--muted)}
 .traffic-diag summary{cursor:pointer;font-weight:600}
 .traffic-diag div{padding:3px 0;word-break:break-word}
+
+.traffic-owner{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:0 0 14px;padding:10px 12px;border:1px solid #d9dfef;border-radius:12px;background:#f7f9ff;font-size:13px;color:var(--ink-2)}
+.traffic-owner button{border:1px solid #c8d0e6;background:#fff;border-radius:999px;padding:5px 12px;font-weight:600;font-size:12px;color:var(--ink-2);cursor:pointer}
