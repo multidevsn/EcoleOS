@@ -451,11 +451,23 @@ function App(){
     async function detect(){
       if(mode==='demo'){if(alive)setPlatformAdmin(role==='admin');return}
       if(!session?.access_token){if(alive)setPlatformAdmin(false);return}
-      try{const res=await fetch('/api/admin/tech',{headers:{Authorization:`Bearer ${session.access_token}`}});if(res.ok)setOwnerDevice(true);if(alive)setPlatformAdmin(res.ok)}catch{if(alive)setPlatformAdmin(false)}
+      // Mémorise le résultat par utilisateur pour la durée de l'onglet (sessionStorage, jamais persistant) :
+      // évite de rappeler /api/admin/tech à chaque rechargement de page (F5, retour au site) pendant la même
+      // session. Ce cache ne fait qu'économiser un appel réseau : le serveur reste seul décisionnaire, et un
+      // changement de statut admin est repris à la prochaine ouverture d'onglet (nouvelle session).
+      const cacheKey='eos-admin-'+session.user.id
+      const cached=sessionStorage.getItem(cacheKey)
+      if(cached!==null){if(alive)setPlatformAdmin(cached==='1');return}
+      try{
+        const res=await fetch('/api/admin/tech',{headers:{Authorization:`Bearer ${session.access_token}`}})
+        if(res.ok)setOwnerDevice(true)
+        try{sessionStorage.setItem(cacheKey,res.ok?'1':'0')}catch{/* stockage indisponible : pas grave, juste pas de cache */}
+        if(alive)setPlatformAdmin(res.ok)
+      }catch{if(alive)setPlatformAdmin(false)}
     }
     detect()
     return()=>{alive=false}
-  },[mode,role,session?.access_token])
+  },[mode,role,session?.access_token,session?.user?.id])
   useEffect(()=>{
     let alive=true
     async function load(){
