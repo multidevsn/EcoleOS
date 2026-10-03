@@ -1,9 +1,19 @@
-import React, {useEffect, useMemo, useState} from 'react'
+import React, {useEffect, useMemo, useRef, useState} from 'react'
 import {Mode, fr, shortMoney, frToday, shortDate, Empty, KpiStrip, MiniBar, Card} from './shared'
+import {Panel, OrdersTable} from './ui'
 import {createRoot} from 'react-dom/client'
 import {supabase} from './lib/supabase'
-import {trackUsage} from './lib/telemetry'
 const TechnicalOpsScreen=React.lazy(()=>import('./TechnicalOpsScreen').then(m=>({default:m.TechnicalOps})))
+const FoodScreen=React.lazy(()=>import('./screens-core').then(m=>({default:m.Food})))
+const ScheduleScreen=React.lazy(()=>import('./screens-core').then(m=>({default:m.Schedule})))
+const GradesScreen=React.lazy(()=>import('./screens-core').then(m=>({default:m.Grades})))
+const MembersScreen=React.lazy(()=>import('./screens-core').then(m=>({default:m.SchoolMembers})))
+const PilotageScreen=React.lazy(()=>import('./screens-core').then(m=>({default:m.DirectorPilotage})))
+const PaymentsScreen=React.lazy(()=>import('./screens-core').then(m=>({default:m.Payments})))
+const AccountScreen=React.lazy(()=>import('./screens-core').then(m=>({default:m.Account})))
+const RewardsScreen=React.lazy(()=>import('./screens-engagement').then(m=>({default:m.Rewards})))
+const AgoraScreen=React.lazy(()=>import('./screens-engagement').then(m=>({default:m.Agora})))
+const CommunityScreen=React.lazy(()=>import('./screens-engagement').then(m=>({default:m.Community})))
 function ScreenFallback(){return <div className="panel"><div className="skeleton"><i/><i/></div></div>}
 import {Analytics} from '@vercel/analytics/react'
 import {SpeedInsights} from '@vercel/speed-insights/react'
@@ -41,7 +51,7 @@ type AppData={profile:Profile|null;studentId:string|null;school:SchoolInfo|null;
 const roleLabels:Record<Role,string>={student:'Élève',parent:'Parent',teacher:'Professeur',admin:'Administration',director:'Directeur',cafeteria:'Cantine'}
 const isRole=(value:unknown):value is Role=>typeof value==='string' && Object.prototype.hasOwnProperty.call(roleLabels,value)
 const roleLabel=(value:unknown)=>isRole(value)?roleLabels[value]:String(value??'—')
-const nav:[Tab,string,React.ElementType][]=[['home','Accueil',School],['food','Food',ShoppingCart],['schedule','Emploi du temps',CalendarDays],['grades','Notes',GraduationCap],['payments','Paiements',WalletCards],['rewards','Impact',Gift],['members','Membres',Users],['agora','Agora',Lightbulb],['community','Communauté',MessageCircle],['pilotage','Pilotage',BarChart3],['ops','Ops',ServerCog],['account','Mon compte',UserRound]]
+const nav:[Tab,string,React.ElementType][]=[['home','Accueil',School],['food','Food',ShoppingCart],['schedule','Emploi du temps',CalendarDays],['grades','Notes',GraduationCap],['payments','Paiements',WalletCards],['rewards','Récompenses',Gift],['members','Membres',Users],['agora','Agora',Lightbulb],['community','Communauté',MessageCircle],['pilotage','Pilotage',BarChart3],['ops','Ops',ServerCog],['account','Mon compte',UserRound]]
 const roleTabs:Record<Role,Tab[]>={student:['home','food','schedule','grades','payments','rewards','agora','community','account'],parent:['home','food','schedule','grades','payments','rewards','agora','community','account'],teacher:['home','schedule','grades','rewards','agora','community','account'],admin:['home','food','schedule','grades','payments','members','rewards','agora','community','account'],director:['home','payments','members','rewards','agora','community','pilotage','account'],cafeteria:['home','food','rewards','agora','community','account']}
 const canAccess=(role:Role,tab:Tab)=>roleTabs[role].includes(tab)
 const primaryTabs:Record<Role,Tab[]>={
@@ -52,7 +62,7 @@ const primaryTabs:Record<Role,Tab[]>={
   director:['home','community','pilotage','payments'],
   cafeteria:['home','food','community'],
 }
-const navContextLabel:Record<Tab,string>={home:'Votre journée',food:'Services du quotidien',schedule:'Votre planning',grades:'Scolarité',payments:'Finances',rewards:'Contribution & avantages',members:'Équipe & membres',agora:'Évolution d’École OS',community:'Espaces de confiance',pilotage:'Pilotage établissement',ops:'Système & coûts',account:'Préférences'}
+const navContextLabel:Record<Tab,string>={home:'Votre journée',food:'Services du quotidien',schedule:'Votre planning',grades:'Scolarité',payments:'Finances',rewards:'Points & avantages',members:'Équipe & membres',agora:'Évolution d’École OS',community:'Espaces de confiance',pilotage:'Pilotage établissement',ops:'Système & coûts',account:'Préférences'}
 const foodCapabilities:Record<Role,{order:boolean;manageMenu:boolean}>={student:{order:true,manageMenu:false},parent:{order:true,manageMenu:false},teacher:{order:false,manageMenu:false},admin:{order:false,manageMenu:true},director:{order:false,manageMenu:false},cafeteria:{order:false,manageMenu:true}}
 
 
@@ -112,9 +122,30 @@ const demoCredentials:Record<Role,{email:string;password:string}>= {
 function LogoMark({size=38}:{size?:number}){return <svg className="logo-mark-svg" width={size} height={size} viewBox="0 0 38 38" aria-hidden="true"><rect x="4.5" y="4.5" width="29" height="29" rx="8" fill="none" stroke="currentColor" strokeWidth="2.2"/><path d="M12 13.5h14M12 19h9M12 24.5h14" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round"/><circle cx="27" cy="19" r="2.15" fill="currentColor"/><path d="M25.2 9.3h3.7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>}
 function Brand({sub}:{sub?:string}){return <div className="brand"><div className="brand-mark" aria-hidden="true"><LogoMark/></div><div><b>École OS</b>{sub&&<span>{sub}</span>}</div></div>}
 
+// Un chunk chargé à la demande (React.lazy, ex. l’onglet Ops) peut avoir un nom qui change à chaque
+// déploiement. Si le navigateur a gardé une ancienne page en mémoire au moment du clic, il peut tenter de
+// charger un fichier qui n’existe plus sur le serveur : ce n’est pas une vraie erreur d’application, juste
+// une version obsolète. On la détecte par son message caractéristique et on recharge une seule fois pour
+// récupérer la dernière version, avant d’afficher l’écran d’erreur.
+function isStaleChunkError(error:Error){
+  return /Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed/i.test(error?.message||'')
+}
+const STALE_RELOAD_KEY='eos-stale-chunk-reload'
+
 class ErrorBoundary extends React.Component<{children:React.ReactNode},{error:Error|null}>{
   state:{error:Error|null}={error:null}
-  static getDerivedStateFromError(error:Error){return {error}}
+  static getDerivedStateFromError(error:Error){
+    if(isStaleChunkError(error)){
+      let alreadyTried=false
+      try{alreadyTried=sessionStorage.getItem(STALE_RELOAD_KEY)==='1'}catch{/* stockage indisponible */}
+      if(!alreadyTried){
+        try{sessionStorage.setItem(STALE_RELOAD_KEY,'1')}catch{/* pas grave, on tente quand même */}
+        window.location.reload()
+        return {error:null} // le rechargement est en cours : pas la peine d’afficher l’écran d’erreur
+      }
+    }
+    return {error}
+  }
   componentDidCatch(error:Error,info:React.ErrorInfo){console.error('École OS — erreur d’affichage',error,info.componentStack)}
   render(){
     if(!this.state.error)return this.props.children
@@ -249,104 +280,130 @@ function Login({onSchool,onDemo}:{onSchool:()=>void,onDemo:(r:Role)=>void}){
 async function fetchLiveData(userId:string):Promise<AppData>{
   const empty:AppData={profile:null,studentId:null,school:null,subscription:null,referral:null,grades:[],schedule:[],payments:[],points:[],foodItems:[],orders:[],rewards:[],loading:false,error:null}
   try{
-    const {data:profileRow,error:profileError}=await supabase.from('profiles').select('id,full_name,role,student_code,school_id').eq('id',userId).single()
+    // ÉTAPE 1 : identité et relation élève/parent.
+    const {data:profileRow,error:profileError}=await supabase
+      .from('profiles')
+      .select('id,full_name,role,student_code,school_id')
+      .eq('id',userId)
+      .single()
     if(profileError)throw profileError
+
     const effectiveRole=profileRow.role as Role
-    let studentId: string|null=effectiveRole==='student'?userId:null
+    let studentId:string|null=effectiveRole==='student'?userId:null
+
     if(effectiveRole==='parent'){
       const {data:links,error}=await supabase.from('parent_students').select('student_id').eq('parent_id',userId).limit(1)
       if(error)throw error
       studentId=links?.[0]?.student_id||null
     }
+
+    // Une seule lecture de class_members sert à la fois au libellé de classe et au planning.
     let className:string|null=null
+    let classIds:string[]=[]
     if(studentId){
-      const {data:members,error}=await supabase.from('class_members').select('class_id').eq('student_id',studentId).limit(1)
+      const {data:members,error}=await supabase.from('class_members').select('class_id').eq('student_id',studentId)
       if(error)throw error
-      const classId=members?.[0]?.class_id
+      classIds=(members||[]).map((m:any)=>String(m.class_id)).filter(Boolean)
+      const classId=classIds[0]
       if(classId){
         const {data:classRow,error:classError}=await supabase.from('classes').select('name').eq('id',classId).maybeSingle()
         if(classError)throw classError
         className=classRow?.name||null
       }
     }
-    const [subjectsRes,foodRes,rewardRes]=await Promise.all([
-      supabase.from('subjects').select('id,name,coefficient'),
-      supabase.from('food_items').select('id,name,price_xof,active').eq('active',true).order('name'),
-      supabase.from('rewards').select('id,name,points_cost,active,audience_role').eq('active',true).order('points_cost')
+
+    const needsAcademic=['student','parent','teacher','admin'].includes(effectiveRole)
+    const needsGrades=effectiveRole==='student'||effectiveRole==='parent'||effectiveRole==='teacher'||effectiveRole==='admin'
+    const needsSchedule=needsGrades
+    const needsPayments=!!studentId||effectiveRole==='admin'
+    const needsOrders=effectiveRole==='student'||effectiveRole==='parent'||effectiveRole==='admin'||effectiveRole==='cafeteria'
+    const needsPoints=true
+
+    // ÉTAPE 2 : toutes les lectures indépendantes partent ensemble.
+    const [subjectsRes,gradesRes,scheduleRes,paymentsRes,pointsRes,ordersRes,schoolRes,subRes,refRes]=await Promise.all([
+      needsAcademic
+        ? supabase.from('subjects').select('id,name,coefficient')
+        : Promise.resolve({data:[],error:null} as any),
+      needsGrades
+        ? (studentId
+            ? supabase.from('grades').select('id,subject_id,value,term,created_at').eq('student_id',studentId).order('created_at',{ascending:false})
+            : effectiveRole==='teacher'||effectiveRole==='admin'
+              ? supabase.from('grades').select('id,subject_id,value,term,created_at').order('created_at',{ascending:false}).limit(50)
+              : Promise.resolve({data:[],error:null} as any))
+        : Promise.resolve({data:[],error:null} as any),
+      needsSchedule
+        ? (effectiveRole==='teacher'
+            ? supabase.from('schedule').select('id,weekday,starts_at,ends_at,room,teacher_id,class_id,subject_id').eq('teacher_id',userId).order('weekday').order('starts_at')
+            : studentId && classIds.length
+              ? supabase.from('schedule').select('id,weekday,starts_at,ends_at,room,teacher_id,class_id,subject_id').in('class_id',classIds).order('weekday').order('starts_at')
+              : effectiveRole==='admin'
+                ? supabase.from('schedule').select('id,weekday,starts_at,ends_at,room,teacher_id,class_id,subject_id').order('weekday').order('starts_at')
+                : Promise.resolve({data:[],error:null} as any))
+        : Promise.resolve({data:[],error:null} as any),
+      needsPayments
+        ? (studentId
+            ? supabase.from('school_payments').select('id,description,amount_xof,status,due_date').eq('user_id',studentId).order('due_date',{ascending:false})
+            : effectiveRole==='admin'
+              ? supabase.from('school_payments').select('id,description,amount_xof,status,due_date').order('due_date',{ascending:false}).limit(30)
+              : Promise.resolve({data:[],error:null} as any))
+        : Promise.resolve({data:[],error:null} as any),
+      needsPoints
+        ? supabase.from('point_ledger').select('id,points,reason,created_at').eq('user_id',profileRow.id).order('created_at',{ascending:false}).limit(50)
+        : Promise.resolve({data:[],error:null} as any),
+      needsOrders
+        ? (effectiveRole==='admin'||effectiveRole==='cafeteria'
+            ? supabase.from('food_orders').select('id,total_xof,status,pickup_date,pickup_slot,created_at').order('created_at',{ascending:false}).limit(40)
+            : supabase.from('food_orders').select('id,total_xof,status,pickup_date,pickup_slot,created_at').eq('user_id',userId).order('created_at',{ascending:false}).limit(20))
+        : Promise.resolve({data:[],error:null} as any),
+      profileRow.school_id
+        ? supabase.from('schools').select('id,name,city,director_id').eq('id',profileRow.school_id).maybeSingle()
+        : Promise.resolve({data:null,error:null} as any),
+      profileRow.school_id&&effectiveRole==='director'
+        ? supabase.from('school_subscriptions').select('id,plan,status,billing_price_xof,current_period_end').eq('school_id',profileRow.school_id).order('created_at',{ascending:false}).limit(1).maybeSingle()
+        : Promise.resolve({data:null,error:null} as any),
+      profileRow.school_id
+        ? supabase.from('referral_codes').select('code').eq('owner_id',userId).maybeSingle()
+        : Promise.resolve({data:null,error:null} as any),
     ])
-    if(subjectsRes.error)throw subjectsRes.error
-    if(foodRes.error)throw foodRes.error
-    const subjectMap=Object.fromEntries((subjectsRes.data||[]).map((s:any)=>[s.id,s]))
-    // Une panne de lecture des récompenses ne doit jamais bloquer toute l'application.
-    // L'écran Impact peut alors afficher un état vide en attendant la correction RLS.
-    const rewards=(rewardRes.error?[]:(rewardRes.data||[])) as Reward[]
-    let grades:Grade[]=[]
-    if(studentId){
-      const {data,error}=await supabase.from('grades').select('id,subject_id,value,term,created_at').eq('student_id',studentId).order('created_at',{ascending:false})
-      if(error)throw error
-      grades=(data||[]).map((g:any)=>({id:g.id,subject:subjectMap[g.subject_id]?.name||'Matière',value:Number(g.value),coefficient:Number(subjectMap[g.subject_id]?.coefficient||1),term:g.term}))
-    } else if(effectiveRole==='teacher' || effectiveRole==='admin'){
-      const {data,error}=await supabase.from('grades').select('id,subject_id,value,term,created_at').order('created_at',{ascending:false}).limit(50)
-      if(error)throw error
-      grades=(data||[]).map((g:any)=>({id:g.id,subject:subjectMap[g.subject_id]?.name||'Matière',value:Number(g.value),coefficient:Number(subjectMap[g.subject_id]?.coefficient||1),term:g.term}))
+
+    for(const result of [subjectsRes,gradesRes,scheduleRes,paymentsRes,pointsRes,ordersRes,schoolRes,subRes,refRes]){
+      if(result?.error)throw result.error
     }
-    let schedule:ScheduleRow[]=[]
-    if(effectiveRole==='teacher'){
-      const {data,error}=await supabase.from('schedule').select('id,weekday,starts_at,ends_at,room,teacher_id,class_id,subject_id').eq('teacher_id',userId).order('weekday').order('starts_at')
-      if(error)throw error
-      schedule=(data||[]).map((s:any)=>({id:s.id,weekday:s.weekday,starts_at:s.starts_at,ends_at:s.ends_at,subject:subjectMap[s.subject_id]?.name||'Cours',room:s.room,class_name:'Classe'}))
-    } else if(studentId){
-      const {data:members,error:memberError}=await supabase.from('class_members').select('class_id').eq('student_id',studentId)
-      if(memberError)throw memberError
-      const classIds=(members||[]).map((m:any)=>m.class_id)
-      if(classIds.length){
-        const {data,error}=await supabase.from('schedule').select('id,weekday,starts_at,ends_at,room,teacher_id,class_id,subject_id').in('class_id',classIds).order('weekday').order('starts_at')
-        if(error)throw error
-        schedule=(data||[]).map((s:any)=>({id:s.id,weekday:s.weekday,starts_at:s.starts_at,ends_at:s.ends_at,subject:subjectMap[s.subject_id]?.name||'Cours',room:s.room,class_name:'Classe'}))
-      }
-    } else {
-      const {data,error}=await supabase.from('schedule').select('id,weekday,starts_at,ends_at,room,teacher_id,class_id,subject_id').order('weekday').order('starts_at')
-      if(error)throw error
-      schedule=(data||[]).map((s:any)=>({id:s.id,weekday:s.weekday,starts_at:s.starts_at,ends_at:s.ends_at,subject:subjectMap[s.subject_id]?.name||'Cours',room:s.room,class_name:'Classe'}))
+
+    const subjectMap=Object.fromEntries((subjectsRes.data||[]).map((sub:any)=>[sub.id,sub]))
+    const grades:Grade[]=(gradesRes.data||[]).map((g:any)=>({
+      id:g.id,
+      subject:subjectMap[g.subject_id]?.name||'Matière',
+      value:Number(g.value),
+      coefficient:Number(subjectMap[g.subject_id]?.coefficient||1),
+      term:g.term,
+    }))
+    const schedule:ScheduleRow[]=(scheduleRes.data||[]).map((x:any)=>({
+      id:x.id,
+      weekday:Number(x.weekday),
+      starts_at:x.starts_at,
+      ends_at:x.ends_at,
+      subject:subjectMap[x.subject_id]?.name||'Cours',
+      room:x.room,
+      class_name:studentId?className||'Classe':'Classe',
+    }))
+
+    return {
+      profile:{id:profileRow.id,full_name:profileRow.full_name,role:effectiveRole,email:'',school_id:profileRow.school_id,student_code:profileRow.student_code,class_name:className},
+      studentId,
+      school:(schoolRes.data||null) as SchoolInfo|null,
+      subscription:(subRes.data||null) as SubscriptionInfo|null,
+      referral:(refRes.data||null) as ReferralInfo|null,
+      grades,
+      schedule,
+      payments:(paymentsRes.data||[]) as Payment[],
+      points:(pointsRes.data||[]) as PointEvent[],
+      foodItems:[],
+      orders:(ordersRes.data||[]) as Order[],
+      rewards:[],
+      loading:false,
+      error:null,
     }
-    let payments:Payment[]=[]
-    if(studentId){
-      const {data,error}=await supabase.from('school_payments').select('id,description,amount_xof,status,due_date').eq('user_id',studentId).order('due_date',{ascending:false})
-      if(error)throw error
-      payments=(data||[]) as Payment[]
-    } else if(effectiveRole==='admin'){
-      const {data,error}=await supabase.from('school_payments').select('id,description,amount_xof,status,due_date').order('due_date',{ascending:false}).limit(30)
-      if(error)throw error
-      payments=(data||[]) as Payment[]
-    }
-    let points:PointEvent[]=[]
-    {
-      const {data,error}=await supabase.from('point_ledger').select('id,points,reason,created_at').eq('user_id',profileRow.id).order('created_at',{ascending:false})
-      if(error)throw error
-      points=(data||[]) as PointEvent[]
-    }
-    let orders:Order[]=[]
-    if(effectiveRole==='cafeteria'||effectiveRole==='admin'){
-      const {data,error}=await supabase.from('food_orders').select('id,total_xof,status,pickup_date,pickup_slot,created_at').order('created_at',{ascending:false}).limit(40)
-      if(error)throw error
-      orders=(data||[]) as Order[]
-    } else {
-      const {data,error}=await supabase.from('food_orders').select('id,total_xof,status,pickup_date,pickup_slot,created_at').eq('user_id',userId).order('created_at',{ascending:false}).limit(20)
-      if(error)throw error
-      orders=(data||[]) as Order[]
-    }
-    let school:SchoolInfo|null=null; let subscription:SubscriptionInfo|null=null; let referral:ReferralInfo|null=null
-    if(effectiveRole==='director' || profileRow.school_id){
-      if(profileRow.school_id){
-        const [{data:schoolRow},{data:subRow},{data:refRow}]=await Promise.all([
-          supabase.from('schools').select('id,name,city,director_id').eq('id',profileRow.school_id).maybeSingle(),
-          supabase.from('school_subscriptions').select('id,plan,status,billing_price_xof,current_period_end').eq('school_id',profileRow.school_id).order('created_at',{ascending:false}).limit(1).maybeSingle(),
-          supabase.from('referral_codes').select('code').eq('owner_id',userId).maybeSingle()
-        ])
-        school=schoolRow as SchoolInfo|null; subscription=subRow as SubscriptionInfo|null; referral=refRow as ReferralInfo|null
-      }
-    }
-    return {profile:{id:profileRow.id,full_name:profileRow.full_name,role:effectiveRole,email:'',school_id:profileRow.school_id,student_code:profileRow.student_code,class_name:className},studentId,school,subscription,referral,grades,schedule,payments,points,foodItems:(foodRes.data||[]) as FoodItem[],orders,rewards,loading:false,error:null}
   }catch(e:any){return {...empty,error:e?.message||'Impossible de charger les données.'}}
 }
 
@@ -355,23 +412,32 @@ async function fetchDemoData(role:Role):Promise<AppData>{
   const studentId=demoRoleIds.student
   try{
     const gradeOwner=(role==='student'||role==='parent'||role==='teacher'||role==='admin')?studentId:profileId
-    const scheduleOwner=(role==='teacher')?demoRoleIds.teacher:role==='student'||role==='parent'||role==='admin'?studentId:profileId
-    const paymentOwner=(role==='student'||role==='parent')?studentId:role==='admin'?studentId:profileId
-    const orderOwner=(role==='student'||role==='parent')?studentId:role==='cafeteria'||role==='admin'?null:profileId
-    const pointsOwner=profileId
-    const queries=[
-      supabase.from('demo_profiles').select('id,full_name,role,class_name,child_name,email').eq('id',profileId).single(),
-      supabase.from('demo_grades').select('id,subject,value,coefficient,term').eq('profile_id',gradeOwner).order('value',{ascending:false}),
-      supabase.from('demo_schedule').select('id,weekday,starts_at,ends_at,subject,room,class_name').eq('profile_id',scheduleOwner).order('weekday').order('starts_at'),
-      supabase.from('demo_payments').select('id,description,amount_xof,status,due_date').eq('profile_id',paymentOwner).order('due_date',{ascending:false}),
-      supabase.from('demo_points').select('id,points,reason,created_at').eq('profile_id',pointsOwner).order('created_at',{ascending:false}),
-      supabase.from('food_items').select('id,name,price_xof,active').eq('active',true).order('name'),
-      orderOwner?supabase.from('demo_orders').select('id,total_xof,status,pickup_date,pickup_slot,created_at').eq('profile_id',orderOwner).order('created_at',{ascending:false}):supabase.from('demo_orders').select('id,total_xof,status,pickup_date,pickup_slot,created_at').order('created_at',{ascending:false}),
-      supabase.from('rewards').select('id,name,points_cost,active,audience_role').eq('active',true).order('points_cost'),
-      supabase.from('demo_school_accounts').select('school_name,city,plan,status,price_xof,period_end,referral_code').eq('profile_id',profileId).maybeSingle()
-    ] as any[]
-    const [p,g,s,pa,pt,fi,o,r,ds]=await Promise.all(queries)
-    const firstError=[p,g,s,pa,pt,fi,o,ds].find(x=>x.error)
+    const scheduleOwner=(role==='teacher')?demoRoleIds.teacher:(role==='student'||role==='parent'||role==='admin')?studentId:profileId
+    const paymentOwner=(role==='student'||role==='parent'||role==='admin')?studentId:profileId
+    const orderOwner=(role==='student'||role==='parent')?studentId:(role==='cafeteria'||role==='admin')?null:profileId
+
+    const profilePromise=supabase.from('demo_profiles').select('id,full_name,role,class_name,child_name,email').eq('id',profileId).single()
+    const gradesPromise=(role==='student'||role==='parent'||role==='teacher'||role==='admin')
+      ?supabase.from('demo_grades').select('id,subject,value,coefficient,term').eq('profile_id',gradeOwner).order('value',{ascending:false})
+      :Promise.resolve({data:[],error:null} as any)
+    const schedulePromise=(role==='student'||role==='parent'||role==='teacher'||role==='admin')
+      ?supabase.from('demo_schedule').select('id,weekday,starts_at,ends_at,subject,room,class_name').eq('profile_id',scheduleOwner).order('weekday').order('starts_at')
+      :Promise.resolve({data:[],error:null} as any)
+    const paymentsPromise=(role==='student'||role==='parent'||role==='admin')
+      ?supabase.from('demo_payments').select('id,description,amount_xof,status,due_date').eq('profile_id',paymentOwner).order('due_date',{ascending:false})
+      :Promise.resolve({data:[],error:null} as any)
+    const pointsPromise=supabase.from('demo_points').select('id,points,reason,created_at').eq('profile_id',profileId).order('created_at',{ascending:false}).limit(50)
+    const ordersPromise=(role==='student'||role==='parent'||role==='admin'||role==='cafeteria')
+      ?(orderOwner
+        ?supabase.from('demo_orders').select('id,total_xof,status,pickup_date,pickup_slot,created_at').eq('profile_id',orderOwner).order('created_at',{ascending:false}).limit(20)
+        :supabase.from('demo_orders').select('id,total_xof,status,pickup_date,pickup_slot,created_at').order('created_at',{ascending:false}).limit(40))
+      :Promise.resolve({data:[],error:null} as any)
+    const schoolPromise=role==='director'
+      ?supabase.from('demo_school_accounts').select('school_name,city,plan,status,price_xof,period_end,referral_code').eq('profile_id',profileId).maybeSingle()
+      :Promise.resolve({data:null,error:null} as any)
+
+    const [p,g,s,pa,pt,o,ds]=await Promise.all([profilePromise,gradesPromise,schedulePromise,paymentsPromise,pointsPromise,ordersPromise,schoolPromise])
+    const firstError=[p,g,s,pa,pt,o,ds].find(x=>x?.error)
     if(firstError?.error)throw firstError.error
     const demoSchool=ds.data as any
     const demoProfile=p.data as Profile
@@ -385,9 +451,9 @@ async function fetchDemoData(role:Role):Promise<AppData>{
       schedule:(s.data||[]) as ScheduleRow[],
       payments:(pa.data||[]) as Payment[],
       points:(pt.data||[]) as PointEvent[],
-      foodItems:(fi.data||[]) as FoodItem[],
+      foodItems:[],
       orders:(o.data||[]) as Order[],
-      rewards:((r?.error?[]:r?.data)||[]) as Reward[],
+      rewards:[],
       loading:false,error:null
     }
   }catch(e:any){return {profile:null,studentId:null,school:null,subscription:null,referral:null,grades:[],schedule:[],payments:[],points:[],foodItems:[],orders:[],rewards:[],loading:false,error:e?.message||'Les données de démo sont indisponibles.'}}
@@ -448,26 +514,29 @@ function App(){
   },[mode,data.profile?.role,role])
   useEffect(()=>{
     let alive=true
-    async function detect(){
-      if(mode==='demo'){if(alive)setPlatformAdmin(role==='admin');return}
-      if(!session?.access_token){if(alive)setPlatformAdmin(false);return}
-      // Mémorise le résultat par utilisateur pour la durée de l'onglet (sessionStorage, jamais persistant) :
-      // évite de rappeler /api/admin/tech à chaque rechargement de page (F5, retour au site) pendant la même
-      // session. Ce cache ne fait qu'économiser un appel réseau : le serveur reste seul décisionnaire, et un
-      // changement de statut admin est repris à la prochaine ouverture d'onglet (nouvelle session).
-      const cacheKey='eos-admin-'+session.user.id
-      const cached=sessionStorage.getItem(cacheKey)
-      if(cached!==null){if(alive)setPlatformAdmin(cached==='1');return}
-      try{
-        const res=await fetch('/api/admin/tech',{headers:{Authorization:`Bearer ${session.access_token}`}})
-        if(res.ok)setOwnerDevice(true)
-        try{sessionStorage.setItem(cacheKey,res.ok?'1':'0')}catch{/* stockage indisponible : pas grave, juste pas de cache */}
-        if(alive)setPlatformAdmin(res.ok)
-      }catch{if(alive)setPlatformAdmin(false)}
+    if(mode==='demo'){
+      setPlatformAdmin(role==='admin')
+      return()=>{alive=false}
     }
-    detect()
+    if(!session?.user){
+      setPlatformAdmin(false)
+      return()=>{alive=false}
+    }
+    // Le contrôle serveur de /api/admin/[action] reste la vraie barrière de sécurité.
+    // Côté client, on évite toutefois d'appeler le très lourd /api/admin/tech à chaque connexion :
+    // la liste d'emails de plateforme n'est pas un secret et ne sert qu'à afficher/masquer le menu Ops.
+    const configured=String(import.meta.env.VITE_PLATFORM_ADMIN_EMAILS||'')
+      .split(',')
+      .map((x:string)=>x.trim().toLowerCase())
+      .filter(Boolean)
+    const email=String(session.user.email||'').trim().toLowerCase()
+    const allowed=!!email&&configured.includes(email)
+    if(alive){
+      setPlatformAdmin(allowed)
+      if(allowed)setOwnerDevice(true)
+    }
     return()=>{alive=false}
-  },[mode,role,session?.access_token,session?.user?.id])
+  },[mode,role,session?.user?.email])
   useEffect(()=>{
     let alive=true
     async function load(){
@@ -486,7 +555,56 @@ function App(){
   // ⚠ Tous les hooks doivent être appelés AVANT le moindre `return` : sinon React plante
   // (« Rendered more hooks than during the previous render ») dès que la session change → page blanche.
   useEffect(()=>{if(!canAccess(role,tab) && !(tab==='ops'&&platformAdmin))setTab('home')},[role,tab,platformAdmin])
-  useEffect(()=>{if(mode==='live'&&session?.user?.id)trackUsage('page_view',1,{tab})},[mode,session?.user?.id,tab])
+  const hydratedTabs=useRef<Set<string>>(new Set())
+  useEffect(()=>{
+    if(!session?.user?.id&&mode==='live')return
+    const needsFood=tab==='food'&&!hydratedTabs.current.has('food')
+    const needsRewards=tab==='rewards'&&!hydratedTabs.current.has('rewards')
+    if(!needsFood&&!needsRewards)return
+    const key=needsFood?'food':'rewards'
+    hydratedTabs.current.add(key)
+    let alive=true
+    setData(d=>({...d,loading:true,error:null}))
+    ;(async()=>{
+      try{
+        if(needsFood){
+          if(mode==='demo'){
+            const roleNow=role
+            const orderOwner=(roleNow==='student'||roleNow==='parent')?demoRoleIds.student:(roleNow==='cafeteria'||roleNow==='admin')?null:demoRoleIds[roleNow]
+            const [foodRes,ordersRes]=await Promise.all([
+              supabase.from('food_items').select('id,name,price_xof,active').eq('active',true).order('name'),
+              orderOwner
+                ?supabase.from('demo_orders').select('id,total_xof,status,pickup_date,pickup_slot,created_at').eq('profile_id',orderOwner).order('created_at',{ascending:false}).limit(20)
+                :supabase.from('demo_orders').select('id,total_xof,status,pickup_date,pickup_slot,created_at').order('created_at',{ascending:false}).limit(40),
+            ])
+            if(foodRes.error)throw foodRes.error
+            if(ordersRes.error)throw ordersRes.error
+            if(alive)setData(d=>({...d,foodItems:(foodRes.data||[]) as FoodItem[],orders:(ordersRes.data||[]) as Order[],loading:false}))
+          }else{
+            const roleNow=data.profile?.role||role
+            const isManager=roleNow==='admin'||roleNow==='cafeteria'
+            const [foodRes,ordersRes]=await Promise.all([
+              supabase.from('food_items').select('id,name,price_xof,active').eq('active',true).order('name'),
+              isManager
+                ?supabase.from('food_orders').select('id,total_xof,status,pickup_date,pickup_slot,created_at').order('created_at',{ascending:false}).limit(40)
+                :supabase.from('food_orders').select('id,total_xof,status,pickup_date,pickup_slot,created_at').eq('user_id',session.user.id).order('created_at',{ascending:false}).limit(20)
+            ])
+            if(foodRes.error)throw foodRes.error
+            if(ordersRes.error)throw ordersRes.error
+            if(alive)setData(d=>({...d,foodItems:(foodRes.data||[]) as FoodItem[],orders:(ordersRes.data||[]) as Order[],loading:false}))
+          }
+        }else if(needsRewards){
+          const rewardsRes=await supabase.from('rewards').select('id,name,points_cost,active,audience_role').eq('active',true).order('points_cost')
+          if(rewardsRes.error)throw rewardsRes.error
+          if(alive)setData(d=>({...d,rewards:(rewardsRes.data||[]) as Reward[],loading:false}))
+        }
+      }catch(error:any){
+        hydratedTabs.current.delete(key)
+        if(alive)setData(d=>({...d,loading:false,error:error?.message||`Impossible de charger ${key}.`}))
+      }
+    })()
+    return()=>{alive=false}
+  },[mode,tab,session?.user?.id,role,data.profile?.role])
   function enterDemo(r:Role){try{sessionStorage.setItem('ecole-os-demo-role',r)}catch{}setCart({});setOrderMsg('');setTab('home');setRole(r);setMode('demo')}
   if(schoolSignup)return <SchoolOnboarding onBack={()=>setSchoolSignup(false)}/>
   if(mode==='live'&&!session)return <Login onSchool={()=>setSchoolSignup(true)} onDemo={enterDemo}/>
@@ -531,17 +649,17 @@ function App(){
         {data.error&&<div className="alert error">{data.error}</div>}
         {!data.loading&&<>
           {tab==='home'&&<Home role={role} mode={mode} name={profileName} data={data} setTab={setTab}/>} 
-          {tab==='food'&&<Food role={role} mode={mode} data={data} cart={cart} setCart={setCart} checkout={checkout} message={orderMsg}/>} 
-          {tab==='schedule'&&<Schedule role={role} mode={mode} data={data}/>} 
-          {tab==='grades'&&<Grades role={role} data={data}/>} 
-          {tab==='payments'&&<Payments role={role} mode={mode} data={data} session={session}/>} 
-          {tab==='rewards'&&<Rewards role={role} mode={mode} data={data}/>}
-          {tab==='members'&&<SchoolMembers role={role} session={session} mode={mode}/>}
-          {tab==='agora'&&<Agora role={role} mode={mode} session={session} profile={data.profile} schoolId={data.school?.id||null}/>}
-          {tab==='community'&&<Community role={role} mode={mode} session={session} profile={data.profile} schoolId={data.school?.id||null}/>}
-          {tab==='pilotage'&&role==='director'&&<DirectorPilotage mode={mode} session={session} data={data}/>}
+          {tab==='food'&&<React.Suspense fallback={<ScreenFallback/>}><FoodScreen role={role} mode={mode} data={data} cart={cart} setCart={setCart} checkout={checkout} message={orderMsg}/></React.Suspense>} 
+          {tab==='schedule'&&<React.Suspense fallback={<ScreenFallback/>}><ScheduleScreen role={role} mode={mode} data={data}/></React.Suspense>} 
+          {tab==='grades'&&<React.Suspense fallback={<ScreenFallback/>}><GradesScreen role={role} data={data}/></React.Suspense>} 
+          {tab==='payments'&&<React.Suspense fallback={<ScreenFallback/>}><PaymentsScreen role={role} mode={mode} data={data} session={session}/></React.Suspense>} 
+          {tab==='rewards'&&<React.Suspense fallback={<ScreenFallback/>}><RewardsScreen role={role} mode={mode} data={data}/></React.Suspense>}
+          {tab==='members'&&<React.Suspense fallback={<ScreenFallback/>}><MembersScreen role={role} session={session} mode={mode}/></React.Suspense>}
+          {tab==='agora'&&<React.Suspense fallback={<ScreenFallback/>}><AgoraScreen role={role} mode={mode} session={session} profile={data.profile} schoolId={data.school?.id||null}/></React.Suspense>}
+          {tab==='community'&&<React.Suspense fallback={<ScreenFallback/>}><CommunityScreen role={role} mode={mode} session={session} profile={data.profile} schoolId={data.school?.id||null}/></React.Suspense>}
+          {tab==='pilotage'&&role==='director'&&<React.Suspense fallback={<ScreenFallback/>}><PilotageScreen mode={mode} session={session} data={data}/></React.Suspense>}
           {tab==='ops'&&platformAdmin&&<React.Suspense fallback={<ScreenFallback/>}><TechnicalOpsScreen mode={mode} session={session}/></React.Suspense>}
-          {tab==='account'&&<Account role={role} mode={mode} data={data} session={session} theme={theme} onThemeChange={setTheme} onSaved={(profile)=>setData(d=>({...d,profile:{...d.profile,...profile} as Profile}))}/>}
+          {tab==='account'&&<React.Suspense fallback={<ScreenFallback/>}><AccountScreen role={role} mode={mode} data={data} session={session} theme={theme} onThemeChange={setTheme} onSaved={(profile)=>setData(d=>({...d,profile:{...d.profile,...profile} as Profile}))}/></React.Suspense>}
         </>}
       </div>
     </section>
@@ -597,530 +715,25 @@ function Home({role,mode,name,data,setTab}:{role:Role,mode:Mode,name:string,data
   </>
 }
 
-function Panel({title,children,action,onAction}:{title:string,children:React.ReactNode,action?:string,onAction?:()=>void}){return <section className="panel"><div className="panel-head"><h3>{title}</h3>{action&&<button onClick={onAction}>{action}<ChevronRight size={16}/></button>}</div>{children}</section>}
-
-function Food({role,mode,data,cart,setCart,checkout,message}:{role:Role,mode:Mode,data:AppData,cart:Record<string,number>,setCart:React.Dispatch<React.SetStateAction<Record<string,number>>>,checkout:()=>void,message:string}){
-  const caps=foodCapabilities[role]
-  const total=data.foodItems.reduce((sum,item)=>sum+item.price_xof*(cart[item.id]||0),0)
-  if(caps.manageMenu) return <>
-    <div className="section-intro"><div><h1>Gestion Food</h1><p>Cette interface est réservée à la cantine et à l'administration.</p></div><div className="pill">Personnel autorisé</div></div>
-    <div className="grid stats"><Card icon={<Package/>} title="Commandes" value={String(data.orders.length)} meta="Commandes visibles"/><Card icon={<Clock3/>} title="En préparation" value={String(data.orders.filter(o=>o.status==='preparing').length)} meta="À traiter"/><Card icon={<ShoppingCart/>} title="Prêtes" value={String(data.orders.filter(o=>o.status==='ready').length)} meta="Retrait"/><Card icon={<CircleDollarSign/>} title="Ventes" value={shortMoney(data.orders.reduce((sum,o)=>sum+Number(o.total_xof),0))} meta="Commandes non annulées"/></div>
-    <div className="grid two"><Panel title="Commandes à traiter"><OrdersTable orders={data.orders.slice(0,20)}/></Panel><Panel title="Menu actuel"><div className="food-grid">{data.foodItems.map(item=><div className="food-card" key={item.id}><div className="food-img">{item.id==='burger'?'🍔':item.id==='sandwich'?'🥪':item.id==='pizza'?'🍕':'🥤'}</div><div><h3>{item.name}</h3><b>{money(item.price_xof)}</b><small>{item.active?'Disponible':'Indisponible'}</small></div><button className="outline" onClick={()=>alert('Action de gestion du menu à brancher au serveur.')}>Modifier</button></div>)}</div></Panel></div>
-  </>
-  if(!caps.order) return <div className="panel"><div className="empty">Food n'est pas disponible pour votre rôle.</div></div>
-  return <><div className="section-intro"><div><h1>Précommande Food</h1><p>Commandez avant la pause et récupérez le repas au créneau choisi.</p></div><div className="pill">Retrait · 12:30–12:40</div></div><div className="food-layout"><div><div className="food-grid">{data.foodItems.map(item=><div className="food-card" key={item.id}><div className="food-img">{item.id==='burger'?'🍔':item.id==='sandwich'?'🥪':item.id==='pizza'?'🍕':'🥤'}</div><div><h3>{item.name}</h3><b>{money(item.price_xof)}</b></div><div className="qty"><button onClick={()=>setCart(c=>({...c,[item.id]:Math.max(0,(c[item.id]||0)-1)}))}>−</button><span>{cart[item.id]||0}</span><button onClick={()=>setCart(c=>({...c,[item.id]:(c[item.id]||0)+1}))}>+</button></div></div>)}</div><Panel title="Mes commandes"><OrdersTable orders={data.orders.slice(0,8)}/></Panel></div><aside className="cart"><h3>{role==='parent'?'Commande de votre enfant':'Ma commande'}</h3>{data.foodItems.filter(item=>cart[item.id]).map(item=><div className="row" key={item.id}><span>{item.name} × {cart[item.id]}</span><b>{money(item.price_xof*cart[item.id])}</b></div>)}{!total&&<p className="muted">Ajoutez un plat pour commencer.</p>}<div className="total"><span>Total</span><strong>{money(total)}</strong></div><button className="primary full" disabled={!total} onClick={checkout}>{mode==='demo'?'Simuler la commande':'Payer avec Wave'}</button>{message&&<div className="alert">{message}</div>}<small className="muted">{mode==='demo'?'Simulation sans débit réel.':'La commande est validée dès que Wave confirme le paiement.'}</small></aside></div></>
-}
-function OrdersTable({orders}:{orders:Order[]}){return orders.length?<div>{orders.map(o=><div className="payment-row orders" key={o.id}><span>#{o.id.slice(0,8)}</span><b>{money(o.total_xof)}</b><small className={o.status==='paid'||o.status==='completed'?'ok':'pending'}>{orderLabels[o.status]||o.status}</small><small>{o.pickup_date?shortDate(o.pickup_date):'—'} · {o.pickup_slot||'—'}</small></div>)}</div>:<Empty text="Aucune commande"/>}
-
-function Schedule({role,mode,data}:{role:Role,mode:Mode,data:AppData}){const todayNo=((new Date().getDay()+6)%7)+1;const byDay=useMemo(()=>{const grouped:Record<number,ScheduleRow[]>={};for(const row of data.schedule)(grouped[row.weekday]??=[]).push(row);return grouped},[data.schedule]);const days=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];return <><div className="section-intro"><div><h1>{role==='teacher'?'Vos cours de la semaine':'Votre semaine'}</h1><p>{role==='teacher'?'Les cours qui vous sont affectés, jour par jour.':'Vos cours et leurs salles, jour par jour.'}</p></div></div><div className="schedule-week">{days.map((day,i)=><section className={'panel'+(i+1===todayNo?' today-col':'')} key={day}><div className="panel-head"><h3>{day}</h3><small>{i+1===todayNo?'Aujourd’hui · ':''}{(byDay[i+1]||[]).length} cours</small></div>{(byDay[i+1]||[]).length?(byDay[i+1]||[]).map(x=><div className="slot" key={x.id}><div className="time">{x.starts_at.slice(0,5)}</div><div><b>{x.subject}</b><span>{role==='teacher'?`${x.class_name} · `:''}jusqu’à {x.ends_at.slice(0,5)}</span></div><span className="status">{x.room}</span></div>):<Empty text="Aucun cours"/>}</section>)}</div>{mode==='demo'&&<div className="free"><b>Salles indicatives libres</b><span>A03 · A07 · C12 · Lab 1</span></div>}</>}
-
-function Grades({role,data}:{role:Role,data:AppData}){const average=avg(data.grades);return <><div className="grade-summary"><span>Moyenne générale</span><strong>{fr(average,2,2)}<i>/ 20</i></strong><small>Pondérée par les coefficients</small>{data.grades.length>0&&<em className="appreciation">{mention(average)}</em>}</div><Panel title={role==='parent'?`Résultats de ${data.profile?.child_name||'votre enfant'}`:role==='teacher'?'Carnet de notes':'Mes résultats'}>{data.grades.length?data.grades.map(g=><div className="grade-row" key={g.id} style={{'--v':g.value/20} as React.CSSProperties}><span>{g.subject}</span><small>Coef. {g.coefficient} · {g.term}</small><b>{fr(g.value)}/20</b></div>):<Empty text="Aucune note disponible"/>}</Panel></>}
-
-
-function SchoolMembers({role,session,mode}:{role:Role,session:any,mode:Mode}){
-  const canManage=role==='admin'||role==='director'
-  const [rows,setRows]=useState<any[]>([])
-  const [counts,setCounts]=useState<Record<string,number>>({})
-  const [loading,setLoading]=useState(mode==='live')
-  const [busy,setBusy]=useState(false)
-  const [message,setMessage]=useState('')
-  const [error,setError]=useState('')
-  const [preview,setPreview]=useState<any[]>([])
-  const [importResults,setImportResults]=useState<any[]>([])
-  const [importId,setImportId]=useState<string|null>(null)
-  const [validating,setValidating]=useState(false)
-  const [fileName,setFileName]=useState('')
-  const [form,setForm]=useState({role:'student' as 'student'|'parent'|'teacher'|'admin'|'cafeteria',full_name:'',email:'',phone:'',student_code:'',parent_name:'',parent_email:'',parent_phone:''})
-  async function load(){
-    if(mode==='demo'){setLoading(false);setRows([]);setCounts({});return}
-    const token=session?.access_token;if(!token){setLoading(false);return}
-    setLoading(true);setError('')
-    try{const res=await fetch('/api/members',{headers:{Authorization:'Bearer '+token}});const result=await res.json();if(!res.ok)throw new Error(result.error||'Impossible de charger les membres.');setRows(result.rows||[]);setCounts(result.counts||{})}
-    catch(e:any){setError(e?.message||'Erreur de chargement.')}finally{setLoading(false)}
-  }
-  useEffect(()=>{load()},[mode,session?.access_token])
-  function parseCsv(text:string){
-    const lines=text.replace(/^\uFEFF/,'').split(/\r?\n/).filter(line=>line.trim());if(lines.length<2)throw new Error('Le CSV doit contenir une ligne d’en-têtes et au moins une ligne de données.')
-    const delimiter=(lines[0].split(';').length>lines[0].split(',').length)?';':','
-    const parseLine=(line:string)=>{const cells:string[]=[];let current='';let quoted=false;for(let i=0;i<line.length;i++){const ch=line[i];if(ch==='"'){if(quoted&&line[i+1]==='"'){current+='"';i++}else quoted=!quoted}else if(ch===delimiter&&!quoted){cells.push(current.trim());current=''}else current+=ch}cells.push(current.trim());return cells}
-    const headers=parseLine(lines[0]).map(x=>x.toLowerCase().replace(/\s+/g,'_'));const idx=(name:string)=>headers.indexOf(name);const value=(cells:string[],name:string)=>{const i=idx(name);return i>=0?cells[i]:''}
-    return lines.slice(1).map(line=>{const cells=parseLine(line);const role=(value(cells,'role')||'student').toLowerCase();return {role,full_name:value(cells,'full_name')||value(cells,'nom')||value(cells,'nom_complet'),email:value(cells,'email'),phone:value(cells,'phone')||value(cells,'telephone'),student_code:value(cells,'student_code')||value(cells,'code_eleve'),parent:((value(cells,'parent_email')||value(cells,'email_parent'))?{full_name:value(cells,'parent_name')||value(cells,'nom_parent'),email:value(cells,'parent_email')||value(cells,'email_parent'),phone:value(cells,'parent_phone')||value(cells,'telephone_parent')}:undefined)}}).filter(x=>x.full_name)
-  }
-  async function validateRows(rows:any[],sourceName=fileName){
-    if(mode==='demo'){setPreview(rows);return}
-    const token=session?.access_token;if(!token){setError('Session expirée.');return}
-    setValidating(true);setError('');setMessage('')
-    try{
-      const res=await fetch('/api/members/validate',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({source_name:sourceName,members:rows})})
-      const result=await res.json();if(!res.ok)throw new Error(result.error||'Impossible de valider le fichier.')
-      setImportId(result.import_id||null);setPreview(result.results||[])
-      setMessage(String(result.valid_count||0)+' ligne(s) valide(s) · '+String(result.invalid_count||0)+' à corriger avant import.')
-    }catch(e:any){setPreview([]);setImportId(null);setError(e?.message||'Erreur de validation.')}finally{setValidating(false)}
-  }
-  function onFile(file:File){
-    setError('');setMessage('');setImportResults([]);setImportId(null);setFileName(file.name)
-    const reader=new FileReader()
-    reader.onload=()=>{try{const rows=parseCsv(String(reader.result||''));void validateRows(rows,file.name)}catch(e:any){setPreview([]);setError(e?.message||'CSV invalide.')}}
-    reader.onerror=()=>setError('Impossible de lire le fichier.')
-    reader.readAsText(file,'utf-8')
-  }
-  async function provision(members:any[],label:string,forcedImportId:string|null|undefined=undefined){
-    if(!members.length){setError('Aucune personne à enregistrer.');return}
-    if(mode==='demo'){setMessage('Mode démo : l’import est désactivé.');return}
-    const token=session?.access_token;if(!token){setError('Session expirée.');return}
-    const outbound=members.map((x:any)=>x.payload?{...x.payload,line:x.line}:x)
-    setBusy(true);setError('');setMessage('')
-    try{
-      const res=await fetch('/api/members/provision',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({members:outbound,invite:true,import_id:forcedImportId===undefined?importId:forcedImportId,source_name:fileName})})
-      const result=await res.json();if(!res.ok)throw new Error(result.error||'Impossible de provisionner les membres.')
-      const ok=(result.results||[]).filter((x:any)=>x.ok).length;const failed=(result.results||[]).length-ok
-      setImportResults(result.results||[])
-      setPreview(prev=>prev.filter((x:any)=>!x.valid))
-      setMessage(label+' : '+ok+' traité(s)'+(failed?' · '+failed+' erreur(s)':'')+'.')
-      setForm({role:'student',full_name:'',email:'',phone:'',student_code:'',parent_name:'',parent_email:'',parent_phone:''})
-      await load()
-    }catch(e:any){setError(e?.message||'Erreur de provisioning.')}finally{setBusy(false)}
-  }
-
-  async function submitSingle(e:React.FormEvent){e.preventDefault();const member:any={role:form.role,full_name:form.full_name,email:form.email,phone:form.phone,student_code:form.student_code};if(form.role==='student'&&form.parent_email)member.parent={full_name:form.parent_name,email:form.parent_email,phone:form.parent_phone};await provision([member],'Création')}
-  if(!canManage)return <div className="panel"><div className="empty">La gestion des membres est réservée à la direction et à l’administration.</div></div>
-  const roleOrder:[string,string][]=[['student','Élèves'],['parent','Parents'],['teacher','Professeurs'],['admin','Administration'],['cafeteria','Cantine']]
-  return <>
-    <div className="section-intro"><div><span className="eyebrow">Annuaire établissement</span><h1>Membres</h1><p>Créez les personnes une fois, puis laissez École OS gérer leur compte, leur rôle et les relations familiales.</p></div><button className="outline" onClick={load} disabled={loading||busy}><RefreshCw size={16}/>{loading?'Actualisation…':'Actualiser'}</button></div>
-    {error&&<div className="alert error">{error}</div>}{message&&<div className="alert">{message}</div>}
-    <div className="grid stats members-stats">{roleOrder.map(([key,label],i)=><Card key={key} icon={i<2?<Users/>:i===2?<School/>:i===3?<ShieldCheck/>:<ShoppingCart/>} title={label} value={String(counts[key]||0)} meta="Dans l’annuaire"/>)}</div>
-    <div className="grid two members-grid">
-      <section className="panel"><div className="panel-head"><div><h3>Ajouter une personne</h3><span className="panel-subtitle">Compte et rattachement créés automatiquement.</span></div><UserPlus size={19}/></div>
-        <form className="account-form" onSubmit={submitSingle}>
-          <div className="account-fields-2"><label>Rôle<select value={form.role} onChange={e=>setForm(f=>({...f,role:e.target.value as any}))}><option value="student">Élève</option><option value="parent">Parent</option><option value="teacher">Professeur</option><option value="admin">Administration</option><option value="cafeteria">Cantine</option></select></label><label>Nom complet<input required value={form.full_name} onChange={e=>setForm(f=>({...f,full_name:e.target.value}))} placeholder="Prénom Nom"/></label></div>
-          <div className="account-fields-2"><label>Email<input type="email" value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))} placeholder="personne@ecole.sn"/></label><label>Téléphone<input value={form.phone} onChange={e=>setForm(f=>({...f,phone:e.target.value}))} placeholder="+221 …"/></label></div>
-          {form.role==='student'&&<><label>Code élève<input value={form.student_code} onChange={e=>setForm(f=>({...f,student_code:e.target.value}))} placeholder="ETU-2026-042"/></label><div className="member-family-note"><b>Parent à rattacher</b><span>Renseignez l’email du parent pour créer la relation automatiquement.</span></div><div className="account-fields-2"><label>Nom du parent<input value={form.parent_name} onChange={e=>setForm(f=>({...f,parent_name:e.target.value}))} placeholder="Prénom Nom"/></label><label>Email du parent<input type="email" value={form.parent_email} onChange={e=>setForm(f=>({...f,parent_email:e.target.value}))} placeholder="parent@exemple.sn"/></label></div><label>Téléphone du parent<input value={form.parent_phone} onChange={e=>setForm(f=>({...f,parent_phone:e.target.value}))} placeholder="+221 …"/></label></>}
-          <button className="primary" disabled={busy||mode==='demo'}><UserPlus size={16}/>{busy?'Création…':'Créer et inviter'}</button>
-        </form>
-      </section>
-      <section className="panel"><div className="panel-head"><div><h3>Import CSV en masse</h3><span className="panel-subtitle">Jusqu’à 200 personnes par opération.</span></div><FileUp size={19}/></div>
-        <div className="member-import-actions"><label className="dropzone"><input type="file" accept=".csv,text/csv" onChange={e=>e.target.files?.[0]&&onFile(e.target.files[0])}/><FileUp size={24}/><b>{fileName||'Choisir un fichier CSV'}</b><small>CSV séparé par virgule ou point-virgule · Colonnes : role, full_name, email, phone, student_code, parent_name, parent_email, parent_phone</small></label><button type="button" className="outline" onClick={()=>{const csv=['role,full_name,email,phone,student_code,parent_name,parent_email,parent_phone','student,Awa Ndiaye,awa@example.com,+221770000000,ETU-2026-001,Mamadou Ndiaye,parent@example.com,+221771111111','teacher,Cheikh Fall,cheikh@example.com,+221772222222,,,,'].join('\n');const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='ecole-os-membres-modele.csv';a.click();URL.revokeObjectURL(url)}}><FileUp size={16}/>Télécharger le modèle</button></div>
-        {validating&&<div className="validation-bar"><RefreshCw size={16}/><span>Validation serveur du fichier…</span></div>}
-        {preview.length>0&&<><div className="import-preview-head"><div><b>{preview.length} ligne(s) analysées</b><span>{preview.filter((x:any)=>x.valid).length} valide(s) · {preview.filter((x:any)=>!x.valid).length} à corriger</span></div><span>{importId?'Import '+importId.slice(0,8):''}</span></div><div className="import-preview">{preview.slice(0,40).map((x,i)=><div className={'import-row '+(x.valid?'valid':'invalid')} key={x.line||i}><span className="import-line">L{x.line||i+2}</span><div><b>{x.payload?.full_name||x.full_name}</b><span>{(x.payload?.role||x.role)+' · '+((x.payload?.email||x.email)||'sans email')}</span></div><small>{x.errors?.length?'❌ '+x.errors.join(' · '):x.warnings?.length?'⚠ '+x.warnings.join(' · '):'✓ Prête'}</small></div>)}{preview.length>40&&<small className="muted">+ {preview.length-40} autre(s)…</small>}</div><button className="primary" disabled={busy||validating||!preview.some((x:any)=>x.valid)} onClick={()=>provision(preview.filter((x:any)=>x.valid),'Import CSV')}><Check size={16}/>Provisionner {preview.filter((x:any)=>x.valid).length} personne(s) valides</button></>}
-        {importResults.length>0&&<div className="import-results"><div className="import-preview-head"><div><b>Résultats du provisioning</b><span>{importResults.filter((x:any)=>x.ok).length} succès · {importResults.filter((x:any)=>!x.ok).length} erreur(s)</span></div></div>{importResults.map((x:any,i)=><div className={'import-result '+(x.ok?'success':'error')} key={x.line||i}><b>L{x.line||i+2}</b><span>{x.ok?'✓ '+x.full_name+' · '+(x.status||'traité'):'✕ '+(x.error||'Erreur')}</span></div>)}</div>}
-        <div className="csv-hint"><AlertTriangle size={16}/><div><b>Recommandation</b><span>Utilisez un code élève stable et un email unique par personne. Un compte déjà présent est relié au lieu d’être recréé.</span></div></div>
-      </section>
-    </div>
-    <section className="panel members-list"><div className="panel-head"><div><h3>Annuaire actuel</h3><span className="panel-subtitle">{rows.length} personne(s) enregistrée(s) dans l’établissement.</span></div></div>
-      {loading?<div className="skeleton mini"><i/><i/></div>:rows.length?<div>{rows.slice(0,100).map((r:any)=><div className="member-row" key={r.id}><div className="member-avatar">{firstLetters(r.full_name)}</div><div><b>{r.full_name}</b><span>{roleLabel(r.role)}{r.student_code?' · '+r.student_code:''}</span></div><small>{r.email||'Pas d’email'}</small><em className={r.status==='linked'?'ok':r.status==='invited'?'pending':''}>{r.status}</em></div>)}</div>:<Empty text="Aucun membre enregistré pour le moment."/>}
-    </section>
-  </>
-}
-
-function DirectorPilotage({mode,session,data}:{mode:Mode,session:any,data:AppData}){
-  const [loading,setLoading]=useState(mode==='live'),[error,setError]=useState(''),[payload,setPayload]=useState<any|null>(null)
-  async function load(){
-    if(mode==='demo'){setPayload({stats:{school_name:'École Démo Horizon',city:'Dakar',plan:'simple',subscription_status:'active',contract_price_xof:5000,active_users:168,included_users:100,overage_users:68,projected_bill_xof:6360,estimated_cost_xof:3150,provider_cost_xof:3380,cost_basis:'provider_allocation',projected_margin_xof:2980,students:112,parents:38,teachers:14,admins:4,events_this_month:4820,collected_this_month_xof:125000,pending_collections_xof:18000,food_orders_this_month:428},settings:{autopilot_enabled:true,auto_scaling_enabled:true,usage_pricing_enabled:true,auto_upgrade_enabled:false,spending_cap_xof:null},events:[{severity:'info',message:'Facturation recalculée automatiquement.',event_type:'billing_cycle_ready',created_at:new Date().toISOString()}]});setLoading(false);return}
-    if(!session?.access_token)return
-    setLoading(true);setError('')
-    try{const res=await fetch('/api/director/stats',{headers:{Authorization:`Bearer ${session.access_token}`}});const json=await res.json();if(!res.ok)throw new Error(json.error||'Statistiques indisponibles.');setPayload(json)}catch(e:any){setError(e?.message||'Erreur de chargement.')}finally{setLoading(false)}
-  }
-  useEffect(()=>{load()},[mode,session?.access_token])
-  const s=payload?.stats
-  return <>
-    <div className="section-intro"><div><span className="eyebrow">PILOTAGE · ÉTABLISSEMENT</span><h1>{s?.school_name||data.school?.name||'Mon école'}</h1><p>{s?.city||data.school?.city||'—'} · Une lecture statistique de l'activité, de l'usage et de la trajectoire des coûts.</p></div><div className="ops-live-pill"><i/><span>Auto-pilotage {payload?.settings?.autopilot_enabled?'actif':'manuel'}</span></div></div>
-    {error&&<div className="alert error">{error}</div>}
-    {loading?<div className="skeleton"><i/><i/><i/></div>:<>
-      <KpiStrip items={[
-        {label:'Utilisateurs actifs',value:String(s?.active_users||0),meta:`${s?.overage_users||0} au-dessus du quota`,icon:<Users/>},
-        {label:'Élèves',value:String(s?.students||0),meta:'effectif',icon:<GraduationCap/>},
-        {label:'Activité',value:new Intl.NumberFormat('fr-FR').format(s?.events_this_month||0),meta:'événements ce mois',icon:<Activity/>},
-        {label:'Encaissements',value:shortMoney(s?.collected_this_month_xof||0),meta:'ce mois',icon:<WalletCards/>},
-        {label:'Projection',value:shortMoney(s?.projected_bill_xof||0),meta:`${s?.cost_basis==='provider_allocation'?'coût fournisseur':'coût estimé'}`,icon:<CircleDollarSign/>}
-      ]}/>
-      <div className="grid two">
-        <section className="panel"><div className="panel-head"><div><h3>Population</h3><span className="panel-subtitle">Répartition actuelle des membres.</span></div><Users size={18}/></div><MiniBar value={Number(s?.students||0)} max={Math.max(1,Number(s?.active_users||0))} label="Élèves" meta={String(s?.students||0)}/><MiniBar value={Number(s?.parents||0)} max={Math.max(1,Number(s?.active_users||0))} label="Parents" meta={String(s?.parents||0)}/><MiniBar value={Number(s?.teachers||0)} max={Math.max(1,Number(s?.active_users||0))} label="Professeurs" meta={String(s?.teachers||0)}/><MiniBar value={Number(s?.admins||0)} max={Math.max(1,Number(s?.active_users||0))} label="Administration" meta={String(s?.admins||0)}/></section>
-        <section className="panel"><div className="panel-head"><div><h3>Trajectoire financière</h3><span className="panel-subtitle">Le montant s'adapte à la masse et aux règles de coût actives.</span></div><Gauge size={18}/></div><div className="finance-rail"><div><span>Plan contractuel</span><b>{shortMoney(s?.contract_price_xof||0)}</b></div><div><span>Usage / dépassement</span><b>{shortMoney(Math.max(0,Number(s?.projected_bill_xof||0)-Number(s?.contract_price_xof||0)))}</b></div><div><span>Coût plateforme appliqué</span><b>{shortMoney(s?.provider_cost_xof||s?.estimated_cost_xof||0)}</b></div><div><span>Base du coût</span><b>{s?.cost_basis==='provider_allocation'?'Fournisseurs':'Règles'}</b></div><div><span>Marge projetée</span><b>{shortMoney(s?.projected_margin_xof||0)}</b></div></div><div className="alert">Votre école n’a pas besoin d’attendre une intervention manuelle pour que le moteur recalcule son cycle selon le nombre d’utilisateurs.</div></section>
-      </div>
-      <div className="grid two">
-        <section className="panel"><div className="panel-head"><div><h3>Flux école</h3><span className="panel-subtitle">Activité métier qui explique l’usage.</span></div></div><div className="row"><b>{s?.food_orders_this_month||0}</b><span>Commandes Food ce mois</span><small>activité</small></div><div className="row"><b>{shortMoney(s?.pending_collections_xof||0)}</b><span>Paiements élèves / familles en attente</span><small>à suivre</small></div><div className="row"><b>{s?.overage_users||0}</b><span>Utilisateurs en dépassement</span><small>facturation</small></div></section>
-        <section className="panel"><div className="panel-head"><div><h3>Événements d’autopilotage</h3><span className="panel-subtitle">Ce que le système a fait à votre place.</span></div></div>{(payload?.events||[]).map((e:any)=><div className="ops-event" key={e.event_type+e.created_at}><span className={`severity ${e.severity}`}/><div><b>{e.event_type}</b><span>{e.message}</span></div><small>{shortDate(String(e.created_at))}</small></div>)}{!(payload?.events||[]).length&&<Empty text="Aucun événement à signaler."/>}</section>
-      </div>
-    </>}
-  </>
-}
-
-function DirectorBilling({mode,data,session}:{mode:Mode,data:AppData,session:any}){
-  const [msg,setMsg]=useState('')
-  const [cycle,setCycle]=useState<any|null>(null)
-  const sub=data.subscription
-  async function loadCycle(){
-    if(mode==='demo'){setCycle({status:'due',amount_xof:6360,active_users:168,included_users:100,overage_users:68,period_start:new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().slice(0,10)});return}
-    if(!data.school?.id)return
-    const {data:rows,error}=await supabase.from('billing_cycles').select('id,status,amount_xof,active_users,included_users,overage_users,period_start,period_end,provider_checkout_url').eq('school_id',data.school.id).order('period_start',{ascending:false}).limit(1)
-    if(!error)setCycle(rows?.[0]||null)
-  }
-  useEffect(()=>{loadCycle()},[mode,data.school?.id])
-  async function pay(){
-    if(mode==='demo'){setMsg('Mode démo : paiement de cycle simulé, aucun débit réel.');return}
-    const token=session?.access_token;if(!token){setMsg('Session expirée.');return}
-    setMsg('Création du paiement Wave…')
-    const body=cycle?.id?{type:'billing_cycle',billing_cycle_id:cycle.id}:{type:'school_subscription',subscription_id:sub?.id}
-    const res=await fetch('/api/wave/checkout',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify(body)})
-    const result=await res.json();if(!res.ok){setMsg(result.error||'Erreur Wave');return}window.location.href=result.wave_launch_url
-  }
-  const base=Number(sub?.billing_price_xof||0)
-  const projected=Number(cycle?.amount_xof||base)
-  const canPay=!!cycle&&['due','past_due'].includes(cycle.status)
-  return <><div className="section-intro"><div><span className="eyebrow">Abonnement de l’école</span><h1>{data.school?.name||'Mon établissement'}</h1><p>Le moteur recalcule le cycle selon les utilisateurs actifs et les règles d'usage.</p></div><div className="pill">{sub?.plan==='extra'?'Extra':'Simple'}</div></div><div className="grid two"><div className="panel"><div className="panel-head"><h3>Cycle courant</h3><span className="status">{cycle?.status||sub?.status||'—'}</span></div><div className="plan-summary"><strong>{shortMoney(projected)} / mois projeté</strong><b>{cycle?.active_users||0} utilisateurs actifs</b><span>{cycle?.overage_users||0} utilisateur(s) au-dessus du quota · base {shortMoney(base)}</span>{cycle?.period_end&&<small>Période : {shortDate(cycle.period_start)} → {shortDate(cycle.period_end)}</small>}</div><button className="primary" disabled={!canPay||!sub} onClick={pay}>{cycle?.status==='past_due'?'Régler le cycle en retard':'Payer le cycle avec Wave'}</button>{cycle?.provider_checkout_url&&<small className="muted">Un checkout Wave a déjà été préparé pour ce cycle.</small>}</div><div className="panel"><div className="panel-head"><h3>Programme de parrainage</h3><Gift size={18}/></div><div className="referral-banner"><b>{data.referral?.code||'Code généré après inscription'}</b><span>Partagez votre code à un autre directeur. La récompense est déclenchée après inscription et premier abonnement payé.</span></div><div className="feature-list"><b>Automatisation</b><span>• recalcul de masse utilisateur</span><span>• cycle de facturation préparé automatiquement</span><span>• coût d'infrastructure estimé</span><span>• paiement Wave préparé en cas d'échéance</span></div></div></div>{msg&&<div className="alert">{msg}</div>}</>
-}
-
-function Payments({role,mode,data,session}:{role:Role,mode:Mode,data:AppData,session:any}){
-  const [msg,setMsg]=useState('')
-  if(!['student','parent','admin','director'].includes(role))return <div className="panel"><div className="empty">Les paiements ne sont pas disponibles pour ce rôle.</div></div>
-  if(role==='director') return <DirectorBilling mode={mode} data={data} session={session}/>
-  const due=data.payments.filter(p=>p.status==='pending').sort((a,b)=>a.due_date.localeCompare(b.due_date))[0]
-  async function pay(paymentId:string){
-    if(mode==='demo'){setMsg('Mode démo : ce paiement est fictif, aucun débit Wave ne sera effectué.');return}
-    const token=session?.access_token;if(!token){setMsg('Session expirée.');return}
-    setMsg('Création du paiement Wave…')
-    const res=await fetch('/api/wave/checkout',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({type:'school_payment',payment_id:paymentId})})
-    const result=await res.json();if(!res.ok){setMsg(result.error||'Erreur Wave');return}window.location.href=result.wave_launch_url
-  }
-  return <><div className="payment-banner"><CircleDollarSign size={30}/><div><b>Échéancier scolaire</b><span>{due?`Prochaine échéance · ${new Intl.DateTimeFormat('fr-FR').format(new Date(due.due_date))}`:'Aucune échéance en attente'}</span></div><strong>{shortMoney(due?.amount_xof||0)}</strong></div><Panel title={role==='parent'?'Paiements de votre enfant':'Mes paiements'}>{data.payments.length?data.payments.map(p=><div className="payment-row" key={p.id}><span>{p.description}</span><b>{money(p.amount_xof)}</b><small className={p.status==='succeeded'?'ok':'pending'}>{p.status==='succeeded'?'Payé':p.status==='failed'?'Échec':p.status==='expired'?'Expiré':'À payer'}</small><button className="text-btn" disabled={p.status!=='pending'} onClick={()=>pay(p.id)}>{p.status==='succeeded'?'Reçu':p.status==='pending'?'Payer':'—'}</button></div>):<Empty text="Aucun paiement"/>}</Panel>{msg&&<div className="alert">{msg}</div>}</>}
-
-
-function Account({role,mode,data,session,theme,onThemeChange,onSaved}:{role:Role,mode:Mode,data:AppData,session:any,theme:Theme,onThemeChange:(theme:Theme)=>void,onSaved:(profile:Partial<Profile>)=>void}){
-  const p=data.profile
-  const [name,setName]=useState(p?.full_name||'')
-  const [newPassword,setNewPassword]=useState('')
-  const [confirmPassword,setConfirmPassword]=useState('')
-  const [msg,setMsg]=useState('')
-  const [error,setError]=useState('')
-  const [busy,setBusy]=useState(false)
-  useEffect(()=>setName(p?.full_name||''),[p?.id,p?.full_name])
-  const email=mode==='live'?(session?.user?.email||''):(p?.email||'')
-  const profileClass=p?.class_name||'Non renseignée'
-  const schoolName=data.school?.name||'Aucune école liée'
-  const dataCards=[
-    {label:'Notes',value:data.grades.length,icon:GraduationCap},
-    {label:'Cours',value:data.schedule.length,icon:CalendarDays},
-    {label:'Paiements',value:data.payments.length,icon:CircleDollarSign},
-    {label:'Commandes',value:data.orders.length,icon:ShoppingCart},
-  ]
-  async function saveProfile(e:React.FormEvent){
-    e.preventDefault();setBusy(true);setError('');setMsg('')
-    const clean=name.trim()
-    if(clean.length<2){setError('Le nom doit contenir au moins 2 caractères.');setBusy(false);return}
-    if(mode==='demo'){
-      setMsg('Mode démo : le profil est consultable mais reste en lecture seule.')
-      setBusy(false);return
-    }
-    const {error:dbError}=await supabase.from('profiles').update({full_name:clean}).eq('id',session.user.id)
-    if(dbError){setError(dbError.message);setBusy(false);return}
-    const {error:authError}=await supabase.auth.updateUser({data:{full_name:clean}})
-    if(authError){setError(authError.message);setBusy(false);return}
-    onSaved({full_name:clean})
-    setMsg('Profil enregistré.')
-    setBusy(false)
-  }
-  async function changePassword(e:React.FormEvent){
-    e.preventDefault();setBusy(true);setError('');setMsg('')
-    if(mode==='demo'){setError('Le changement de mot de passe est disponible uniquement sur un compte réel.');setBusy(false);return}
-    if(newPassword.length<8){setError('Utilisez au moins 8 caractères pour le nouveau mot de passe.');setBusy(false);return}
-    if(newPassword!==confirmPassword){setError('Les deux mots de passe ne correspondent pas.');setBusy(false);return}
-    const {error:updateError}=await supabase.auth.updateUser({password:newPassword})
-    if(updateError){setError(updateError.message);setBusy(false);return}
-    setNewPassword('');setConfirmPassword('');setMsg('Mot de passe mis à jour.')
-    setBusy(false)
-  }
-  return <>
-    <div className="account-hero">
-      <div className="account-avatar">{firstLetters(p?.full_name||'Utilisateur')}</div>
-      <div className="account-identity"><h1>{p?.full_name||'Mon compte'}</h1><p>Gérez votre identité, votre sécurité et les données rattachées à votre compte {roleLabels[role].toLowerCase()}.</p></div>
-      <div className="account-role"><ShieldCheck size={16}/><span>{roleLabels[role]}</span></div>
-    </div>
-    <div className="account-data-grid">{dataCards.map(({label,value,icon:Icon})=><div className="account-data-card" key={label}><span><Icon size={17}/>{label}</span><strong>{value}</strong><small>Enregistré</small></div>)}</div>
-    <div className="account-grid">
-      <section className="panel account-panel">
-        <div className="panel-head"><div><h3>Informations personnelles</h3><span className="panel-subtitle">Les informations utilisées dans École OS.</span></div><Sparkles size={18}/></div>
-        <form className="account-form" onSubmit={saveProfile}>
-          <label>Nom complet<div className="input-with-icon"><UserRound size={16}/><input value={name} onChange={e=>setName(e.target.value)} placeholder="Nom et prénom"/></div></label>
-          <label>Email<div className="input-with-icon disabled"><Mail size={16}/><input value={email} readOnly/></div></label>
-          <div className="account-fields-2"><label>Rôle<div className="readonly-field"><ShieldCheck size={16}/>{roleLabels[role]}</div></label><label>Code élève<div className="readonly-field"><BookOpen size={16}/>{p?.student_code||'—'}</div></label></div>
-          <div className="account-fields-2"><label>Classe<div className="readonly-field">{profileClass}</div></label><label>Établissement<div className="readonly-field">{schoolName}</div></label></div>
-          {error&&<div className="alert error">{error}</div>}{msg&&<div className="alert">{msg}</div>}
-          <button className="primary" disabled={busy}><Save size={16}/>{busy?'Enregistrement…':'Enregistrer les modifications'}</button>
-        </form>
-      </section>
-      <section className="panel account-panel appearance-panel">
-        <div className="panel-head"><div><h3>Apparence</h3><span className="panel-subtitle">Trois ambiances, même École OS. Rien de plus.</span></div><Palette size={18}/></div>
-        <div className="theme-picker">
-          <button className={theme==='cahier'?'selected':''} onClick={()=>onThemeChange('cahier')}><span className="theme-swatch cahier"/><b>Cahier</b><small>Identité actuelle</small></button>
-          <button className={theme==='epure'?'selected':''} onClick={()=>onThemeChange('epure')}><span className="theme-swatch epure"/><b>Épuré</b><small>Plus sobre</small></button>
-          <button className={theme==='brume'?'selected':''} onClick={()=>onThemeChange('brume')}><span className="theme-swatch brume"/><b>Brume</b><small>Doux & calme</small></button>
-        </div>
-      </section>
-      <section className="panel account-panel">
-        <div className="panel-head"><div><h3>Sécurité</h3><span className="panel-subtitle">Gardez votre accès protégé.</span></div><KeyRound size={18}/></div>
-        <div className="security-note"><CheckCircle2 size={17}/><div><b>Session sécurisée</b><span>{mode==='live'?'Vous êtes connecté à votre compte.':'Compte de démonstration.'}</span></div></div>
-        <form className="account-form" onSubmit={changePassword}>
-          <label>Nouveau mot de passe<div className="input-with-icon"><KeyRound size={16}/><input type="password" minLength={8} value={newPassword} onChange={e=>setNewPassword(e.target.value)} placeholder="8 caractères minimum"/></div></label>
-          <label>Confirmer<div className="input-with-icon"><KeyRound size={16}/><input type="password" minLength={8} value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} placeholder="Répétez le nouveau mot de passe"/></div></label>
-          <button className="outline full" disabled={busy}>Mettre à jour le mot de passe</button>
-          <div className="account-tip"><b>À savoir</b><span>Votre adresse email sert à vous connecter. Sa modification peut demander une confirmation.</span></div>
-        </form>
-      </section>
-    </div>
-  </>
-}
-
-const ideaStatusLabel:Record<IdeaStatus,string>={new:'Nouvelle',review:'En étude',planned:'Planifiée',building:'En développement',done:'Disponible'}
-const ideaStatusClass:Record<IdeaStatus,string>={new:'new',review:'review',planned:'planned',building:'building',done:'done'}
-const demoIdeaSeed:CommunityIdea[]=[
-  {id:'demo-idea-1',title:'Un calendrier commun parents / professeurs',description:'Réunir devoirs, réunions et événements dans une vue unique.',author_name:'Fatou Ndiaye',role:'parent',status:'review',votes:28,created_at:'2026-09-21T10:00:00Z'},
-  {id:'demo-idea-2',title:'Notifier avant la fermeture de la cantine',description:'Prévenir automatiquement quand la fenêtre de commande approche.',author_name:'Cheikh Ba',role:'cafeteria',status:'planned',votes:19,created_at:'2026-09-20T08:30:00Z'},
-  {id:'demo-idea-3',title:'Ajouter un mode hors-ligne léger',description:'Consulter les données essentielles même avec une connexion instable.',author_name:'Moussa Diop',role:'teacher',status:'new',votes:14,created_at:'2026-09-19T15:20:00Z'}
-]
-const demoSurveySeed:CommunitySurvey[]=[
-  {id:'demo-survey-1',question:'Quel service devrait être amélioré ensuite ?',description:'Un vote simple. Les résultats servent à prioriser la feuille de route.',expires_at:'2026-10-02',options:[{id:'s1-a',label:'Messagerie',votes:38},{id:'s1-b',label:'Cantine',votes:24},{id:'s1-c',label:'Emploi du temps',votes:21},{id:'s1-d',label:'Paiements',votes:17}]}
-]
-function demoStorage<T>(key:string,fallback:T):T{try{const raw=localStorage.getItem(key);return raw?JSON.parse(raw):fallback}catch{return fallback}}
-function saveDemoStorage<T>(key:string,value:T){try{localStorage.setItem(key,JSON.stringify(value))}catch{}}
-function addDemoImpact(userId:string,points:number,reason:string){const key=`eos-demo-impact-events-${userId}`;const current=demoStorage<any[]>(key,[]);current.unshift({id:`local-${Date.now()}`,points,reason,created_at:new Date().toISOString()});saveDemoStorage(key,current);const totalKey=`eos-demo-impact-extra-${userId}`;const total=Number(localStorage.getItem(totalKey)||0)+points;try{localStorage.setItem(totalKey,String(total))}catch{};window.dispatchEvent(new Event('eos-points-updated'))}
-
-function Rewards({role,mode,data}:{role:Role,mode:Mode,data:AppData}){
-  const userId=data.profile?.id||'anonymous';
-  const [extra,setExtra]=useState(0);
-  const [msg,setMsg]=useState('');
-  const [busy,setBusy]=useState('');
-  useEffect(()=>{
-    const key=`eos-demo-impact-extra-${userId}`;
-    const read=()=>setExtra(Number(localStorage.getItem(key)||0));
-    read();
-    const on=()=>read();
-    window.addEventListener('eos-points-updated',on);
-    return()=>window.removeEventListener('eos-points-updated',on);
-  },[userId]);
-  const balance=data.points.reduce((s,p)=>s+Number(p.points),0)+extra;
-  const roleRewards=data.rewards.filter(x=>!x.audience_role||x.audience_role===role);
-  async function redeem(reward:Reward){
-    if(balance<reward.points_cost)return;
-    setBusy(reward.id);
-    setMsg('');
-    try{
-      if(mode==='demo'){
-        addDemoImpact(userId,-reward.points_cost,`Échange : ${reward.name}`);
-        setExtra(Number(localStorage.getItem(`eos-demo-impact-extra-${userId}`)||0));
-        setMsg(`Récompense demandée : ${reward.name}.`);
-      }else{
-        const {error}=await supabase.rpc('redeem_reward',{p_reward_id:reward.id});
-        if(error)throw error;
-        setMsg(`Échange enregistré : ${reward.name}.`);
-        window.dispatchEvent(new Event('eos-points-updated'));
-      }
-    }catch(e:any){
-      setMsg(e?.message||'Impossible d’échanger cette récompense.');
-    }finally{setBusy('')}
-  }
-  return <><div className="points-hero"><div><span>Mon Impact</span><strong>{fr(balance)}</strong><small>Points de contribution · {roleLabels[role].toLowerCase()}</small></div><Star size={44}/></div>
-    {msg&&<div className="alert">{msg}</div>}
-    <div className="impact-note"><Sparkles size={17}/><div><b>Tout le monde contribue.</b><span>Élève, parent, professeur, administration, direction ou cantine : le même moteur de points, des récompenses adaptées au rôle.</span></div></div>
-    <Panel title="Récompenses disponibles"><div className="reward-grid">{roleRewards.length?roleRewards.map(x=><div className="reward" key={x.id}><div className="reward-icon">{role==='director'?'◈':x.points_cost<800?'☕':x.points_cost<2000?'✦':'🎁'}</div><div><b>{x.name}</b><span>{fr(x.points_cost)} Impact{x.points_cost>balance?` · il vous manque ${fr(x.points_cost-balance)}`:''}</span></div><button className="outline" disabled={balance<x.points_cost||!!busy} onClick={()=>redeem(x)}>{busy===x.id?'…':'Échanger'}</button></div>):<Empty text="Aucune récompense disponible pour votre rôle."/>}</div></Panel>
-    <Panel title="Activité récente">{[...data.points,...demoStorage<any[]>(`eos-demo-impact-events-${userId}`,[])].sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at))).slice(0,8).map((x:any)=><div className="row" key={x.id}><b>{Number(x.points)>0?`+${x.points}`:x.points}</b><span>{x.reason}</span><small>{new Intl.DateTimeFormat('fr-FR').format(new Date(x.created_at))}</small></div>)}</Panel>
-  </>
-}
-
-function Agora({role,mode,session,profile,schoolId}:{role:Role,mode:Mode,session:any,profile:Profile|null,schoolId:string|null}){
-  const [section,setSection]=useState<'ideas'|'surveys'|'roadmap'>('ideas')
-  const [ideas,setIdeas]=useState<CommunityIdea[]>([])
-  const [surveys,setSurveys]=useState<CommunitySurvey[]>([])
-  const [title,setTitle]=useState('');const [description,setDescription]=useState('');const [msg,setMsg]=useState('');const [busy,setBusy]=useState(false)
-  const userId=mode==='live'?session?.user?.id:(profile?.id||`demo-${role}`)
-  const authorName=profile?.full_name||roleLabels[role]
-  useEffect(()=>{let alive=true;async function load(){setMsg('');if(mode==='demo'){const storedIdeas=demoStorage('eos-demo-agora-ideas',demoIdeaSeed).map((x:any)=>({...x,voted:!!demoStorage<string[]>(`eos-demo-votes-${userId}`,[]).includes(x.id)}));const storedSurveys=demoStorage('eos-demo-agora-surveys',demoSurveySeed);const answers=demoStorage<Record<string,string>>(`eos-demo-survey-answers-${userId}`,{});setIdeas(storedIdeas);setSurveys(storedSurveys.map((x:any)=>({...x,answer:answers[x.id]||null})));return}if(!schoolId||!userId){return}try{const [ir,sr]=await Promise.all([supabase.from('community_ideas').select('id,title,description,author_name,role,status,vote_count,created_at').eq('school_id',schoolId).order('created_at',{ascending:false}),supabase.from('community_surveys').select('id,question,description,expires_at').eq('school_id',schoolId).eq('active',true).order('created_at',{ascending:false})]);if(ir.error)throw ir.error;if(sr.error)throw sr.error;const ids=(sr.data||[]).map((x:any)=>x.id);const [vr,or,allrr,myrr]=await Promise.all([supabase.from('community_idea_votes').select('idea_id').eq('user_id',userId),ids.length?supabase.from('community_survey_options').select('id,survey_id,label').in('survey_id',ids):Promise.resolve({data:[],error:null} as any),ids.length?supabase.from('community_survey_responses').select('survey_id,option_id').in('survey_id',ids):Promise.resolve({data:[],error:null} as any),ids.length?supabase.from('community_survey_responses').select('survey_id,option_id').eq('user_id',userId).in('survey_id',ids):Promise.resolve({data:[],error:null} as any)]);if(vr.error)throw vr.error;if(or.error)throw or.error;if(allrr.error)throw allrr.error;if(myrr.error)throw myrr.error;const voted=new Set((vr.data||[]).map((x:any)=>x.idea_id));const optionRows=(or.data||[]) as any[];const responseMap=new Map((myrr.data||[]).map((x:any)=>[x.survey_id,x.option_id]));const optionCounts=new Map<string,number>();(allrr.data||[]).forEach((x:any)=>optionCounts.set(x.option_id,(optionCounts.get(x.option_id)||0)+1));const grouped=(sr.data||[]).map((q:any)=>{const opts=optionRows.filter(o=>o.survey_id===q.id).map(o=>({id:o.id,label:o.label,votes:optionCounts.get(o.id)||0}));return {...q,options:opts,answer:responseMap.get(q.id)||null}});setIdeas((ir.data||[]).map((x:any)=>({id:x.id,title:x.title,description:x.description,author_name:x.author_name,role:x.role,status:x.status,votes:Number(x.vote_count||0),created_at:x.created_at,voted:voted.has(x.id)})));setSurveys(grouped)}catch(e:any){if(alive)setMsg(e?.message||'Agora indisponible pour le moment. Appliquez la migration Supabase dédiée.')}}load();return()=>{alive=false}},[mode,schoolId,userId])
-  async function submitIdea(e:React.FormEvent){e.preventDefault();const t=title.trim(),d=description.trim();if(t.length<8||d.length<12){setMsg('Donnez un titre clair et une description utile.');return}setBusy(true);setMsg('');try{if(mode==='demo'){const next:CommunityIdea={id:`idea-${Date.now()}`,title:t,description:d,author_name:authorName,role,status:'new',votes:0,created_at:new Date().toISOString()};const stored=demoStorage<CommunityIdea[]>('eos-demo-agora-ideas',demoIdeaSeed);saveDemoStorage('eos-demo-agora-ideas',[next,...stored]);setIdeas((x)=>[next,...x]);addDemoImpact(userId,10,'Idée proposée dans Agora');}else{const {error}=await supabase.rpc('submit_community_idea',{p_title:t,p_description:d});if(error)throw error;const {data:rows,error:readError}=await supabase.from('community_ideas').select('id,title,description,author_name,role,status,vote_count,created_at').eq('school_id',schoolId).order('created_at',{ascending:false});if(readError)throw readError;setIdeas((rows||[]).map((x:any)=>({...x,votes:Number(x.vote_count||0)})));window.dispatchEvent(new Event('eos-points-updated'))}setTitle('');setDescription('');setMsg('Idée envoyée. +10 Impact pour votre contribution.')}catch(e:any){setMsg(e?.message||'Impossible d’envoyer cette idée.')}finally{setBusy(false)}}
-  async function vote(id:string){const current=ideas.find(x=>x.id===id);if(!current||current.voted)return;try{if(mode==='demo'){const votes=demoStorage<string[]>(`eos-demo-votes-${userId}`,[]);if(votes.includes(id))return;saveDemoStorage(`eos-demo-votes-${userId}`,[id,...votes]);const stored=demoStorage<CommunityIdea[]>('eos-demo-agora-ideas',demoIdeaSeed).map(x=>x.id===id?{...x,votes:x.votes+1,voted:true}:x);saveDemoStorage('eos-demo-agora-ideas',stored);setIdeas(stored);addDemoImpact(userId,2,'Vote utile dans Agora');}else{const {error}=await supabase.rpc('vote_community_idea',{p_idea_id:id});if(error)throw error;setIdeas(x=>x.map(i=>i.id===id?{...i,votes:i.votes+1,voted:true}:i));window.dispatchEvent(new Event('eos-points-updated'))}}catch(e:any){setMsg(e?.message||'Vote impossible.')}}
-  async function answerSurvey(surveyId:string,optionId:string){const survey=surveys.find(x=>x.id===surveyId);if(!survey||survey.answer)return;try{if(mode==='demo'){const answers=demoStorage<Record<string,string>>(`eos-demo-survey-answers-${userId}`,{});answers[surveyId]=optionId;saveDemoStorage(`eos-demo-survey-answers-${userId}`,answers);const stored=demoStorage<CommunitySurvey[]>('eos-demo-agora-surveys',demoSurveySeed).map(s=>s.id===surveyId?{...s,options:s.options.map(o=>o.id===optionId?{...o,votes:o.votes+1}:o),answer:optionId}:s);saveDemoStorage('eos-demo-agora-surveys',stored);setSurveys(stored);addDemoImpact(userId,2,'Participation à un sondage');}else{const {error}=await supabase.rpc('respond_community_survey',{p_survey_id:surveyId,p_option_id:optionId});if(error)throw error;setSurveys(x=>x.map(s=>s.id===surveyId?{...s,answer:optionId,options:s.options.map(o=>o.id===optionId?{...o,votes:o.votes+1}:o)}:s));window.dispatchEvent(new Event('eos-points-updated'))}}catch(e:any){setMsg(e?.message||'Réponse impossible.')}}
-  return <><div className="section-intro"><div><span className="eyebrow">ÉCOLE OS / COMMUNAUTÉ</span><h1>Agora.</h1><p>Les idées qui améliorent l'école passent par ici : proposer, voter, voir ce qui avance.</p></div><span className="pill"><Sparkles size={15}/> +10 Impact par idée retenue</span></div><div className="agora-tabs"><button className={section==='ideas'?'active':''} onClick={()=>setSection('ideas')}><Lightbulb size={16}/>Idées</button><button className={section==='surveys'?'active':''} onClick={()=>setSection('surveys')}><BarChart3 size={16}/>Sondages</button><button className={section==='roadmap'?'active':''} onClick={()=>setSection('roadmap')}><ListChecks size={16}/>Feuille de route</button></div>{msg&&<div className="alert">{msg}</div>}{section==='ideas'&&<div className="agora-layout"><section className="panel"><div className="panel-head"><div><h3>Proposer une amélioration</h3><span className="panel-subtitle">Une idée courte, concrète et utile.</span></div><MessageSquarePlus size={18}/></div><form className="agora-form" onSubmit={submitIdea}><label>Titre<input value={title} onChange={e=>setTitle(e.target.value)} maxLength={110} placeholder="Ex. Calendrier commun parents / professeurs"/></label><label>Description<textarea value={description} onChange={e=>setDescription(e.target.value)} maxLength={420} placeholder="Pourquoi cette amélioration aiderait l'école ?" rows={4}/></label><button className="primary" disabled={busy}><Lightbulb size={16}/>{busy?'Envoi…':'Proposer mon idée'}</button></form></section><section className="panel"><div className="panel-head"><div><h3>Les idées de la communauté</h3><span className="panel-subtitle">Un vote par idée. Pas de classement des personnes.</span></div><ThumbsUp size={18}/></div><div className="idea-list">{ideas.length?ideas.map(x=><article className="idea-card" key={x.id}><div className="idea-head"><div><b>{x.title}</b><span>{x.description}</span></div><button className={`vote-btn${x.voted?' voted':''}`} disabled={x.voted} onClick={()=>vote(x.id)}><ThumbsUp size={15}/>{x.votes}</button></div><div className="idea-meta"><span className={`idea-status ${ideaStatusClass[x.status]}`}>{ideaStatusLabel[x.status]}</span><span>{roleLabels[x.role]} · {x.author_name}</span><span>{shortDate(x.created_at)}</span></div></article>):<Empty text="Aucune idée pour le moment."/>}</div></section></div>}{section==='surveys'&&<div className="survey-list">{surveys.length?surveys.map(s=>{const total=s.options.reduce((n,o)=>n+o.votes,0);return <section className="panel survey-card" key={s.id}><div className="panel-head"><div><h3>{s.question}</h3><span className="panel-subtitle">{s.description}</span></div><BarChart3 size={18}/></div><div className="survey-options">{s.options.map(o=>{const pct=total?Math.round(o.votes/total*100):0;const selected=s.answer===o.id;return <button key={o.id} className={`survey-option${selected?' selected':''}`} disabled={!!s.answer} onClick={()=>answerSurvey(s.id,o.id)}><span className="survey-option-top"><b>{o.label}</b><small>{pct}%</small></span><span className="survey-bar"><i style={{width:`${pct}%`}}/></span></button>})}</div>{s.answer?<small className="survey-done"><CheckCircle2 size={15}/> Merci. Votre réponse compte.</small>:<small className="survey-hint">1 réponse · +2 Impact</small>}</section>}) : <div className="panel"><Empty text="Aucun sondage actif."/></div>}</div>}{section==='roadmap'&&<div className="roadmap-grid">{(['new','review','planned','building','done'] as IdeaStatus[]).map(status=><section className="panel roadmap-col" key={status}><div className="roadmap-title"><span className={`idea-status ${ideaStatusClass[status]}`}>{ideaStatusLabel[status]}</span><b>{ideas.filter(x=>x.status===status).length}</b></div>{ideas.filter(x=>x.status===status).map(x=><article className="roadmap-item" key={x.id}><b>{x.title}</b><small>{x.votes} votes</small></article>)}{!ideas.some(x=>x.status===status)&&<small className="muted">Rien pour l'instant.</small>}</section>)}</div>}</>}
-
-
-function Community({role,mode,session,profile,schoolId}:{role:Role,mode:Mode,session:any,profile:Profile|null,schoolId:string|null}){
-  const userId=profile?.id||session?.user?.id||'anonymous'
-  const demoSpaces:CommunitySpace[]=[
-    {id:'demo-class',name:profile?.class_name?`Classe ${profile.class_name}`:'Mon groupe',description:'Votre espace de classe : devoirs, entraide et informations liées à votre groupe.',kind:'community',scope_type:'class',scope_key:profile?.class_name||'4e B',priority:10,created_at:'2026-09-24T07:55:00Z'},
-    {id:'demo-announcements',name:'Annonces de l’établissement',description:'Informations officielles de l’établissement. Les publications sont encadrées.',kind:'announcement',scope_type:'school',priority:20,created_at:'2026-09-24T08:00:00Z'},
-    {id:'demo-community',name:'Vie de l’établissement',description:'Échanges entre membres sur la vie scolaire. Ce n’est pas un espace d’annonces officielles.',kind:'community',scope_type:'school',priority:50,created_at:'2026-09-24T08:05:00Z'},
-  ]
-  const demoMessages:CommunityMessage[]=[
-    {id:'dm1',space_id:'demo-announcements',sender_id:demoRoleIds.director,sender_name:'Ibrahima Sarr',sender_role:'director',body:'Réunion parents-professeurs : jeudi à 17 h, salle polyvalente. Cette information est officielle et reste disponible pour les nouveaux arrivants.',created_at:'2026-09-24T08:12:00Z'},
-    {id:'dm2',space_id:'demo-class',sender_id:demoRoleIds.teacher,sender_name:'Cheikh Fall',sender_role:'teacher',body:'Devoir de maths : exercices 4 à 8. La correction sera partagée après la séance de vendredi.',created_at:'2026-09-24T09:30:00Z'},
-    {id:'dm3',space_id:'demo-class',sender_id:demoRoleIds.parent,sender_name:'Aminata Ndiaye',sender_role:'parent',body:'Merci pour la précision. Je l’ai bien noté pour cette semaine.',created_at:'2026-09-24T10:02:00Z'},
-    {id:'dm4',space_id:'demo-community',sender_id:demoRoleIds.student,sender_name:'Awa Diop',sender_role:'student',body:'Pour les révisions de vendredi, la salle 3 est disponible de 16 h à 18 h.',created_at:'2026-09-24T10:40:00Z'},
-  ]
-  const [spaces,setSpaces]=useState<CommunitySpace[]>([])
-  const [selected,setSelected]=useState('')
-  const [messages,setMessages]=useState<CommunityMessage[]>([])
-  const [overview,setOverview]=useState<CommunitySpace[]>([])
-  const [draft,setDraft]=useState('')
-  const [spaceFilter,setSpaceFilter]=useState('')
-  const [loading,setLoading]=useState(true)
-  const [sending,setSending]=useState(false)
-  const [notice,setNotice]=useState('')
-  const [error,setError]=useState('')
-  const [ideaAssistDismissed,setIdeaAssistDismissed]=useState(false)
-
-  const selectedSpace=spaces.find(x=>x.id===selected)||spaces[0]||null
-  const isDemo=mode==='demo'
-  const detectedIdea=useMemo(()=>detectCommunityIntent(draft),[draft])
-  const totalUnread=overview.reduce((s,x)=>s+Number(x.unread_count||0),0)
-  const filteredSpaces=useMemo(()=>{
-    const q=spaceFilter.trim().toLowerCase()
-    if(!q)return spaces
-    return spaces.filter(s=>`${s.name} ${s.description}`.toLowerCase().includes(q))
-  },[spaces,spaceFilter])
-  const visibleMessages=messages.filter(x=>x.space_id===selectedSpace?.id)
-  const canAnnounce=['admin','director','teacher'].includes(role)
-  const scopeLabel=(space:CommunitySpace)=>space.scope_type==='class'?'Votre classe':space.kind==='announcement'?'Annonce officielle':'Vie de l’établissement'
-  const scopeIcon=(space:CommunitySpace)=>space.scope_type==='class'?<UsersRound size={16}/>:space.kind==='announcement'?<Megaphone size={16}/>:<MessageCircle size={16}/>
-  const timeOnly=(d:string)=>{const x=new Date(d);return isNaN(x.getTime())?'':new Intl.DateTimeFormat('fr-FR',{hour:'2-digit',minute:'2-digit'}).format(x)}
-
-  function sortSpaces(rows:CommunitySpace[]){return [...rows].sort((a,b)=>(Number(a.priority??50)-Number(b.priority??50))||a.name.localeCompare(b.name))}
-  function sanitizeDemoMessages(rows:CommunityMessage[]){return rows.filter(m=>!m.body.startsWith('Idée utile : un résumé hebdomadaire des annonces et discussions importantes'))}
-  function readDemoSpaces(){
-    const stored=demoStorage<CommunitySpace[]>('eos-demo-community-spaces',demoSpaces)
-    const visibleDemoMessages=sanitizeDemoMessages(demoMessages)
-    const enriched=sortSpaces(stored.map(s=>{const all=visibleDemoMessages.filter(m=>m.space_id===s.id);return {...s,unread_count:all.length,latest_body:all.at(-1)?.body||null,latest_at:all.at(-1)?.created_at||null}}))
-    saveDemoStorage('eos-demo-community-spaces',enriched)
-    setSpaces(enriched);setOverview(enriched)
-    setSelected(current=>current||enriched[0]?.id||'')
-  }
-  function demoKey(spaceId:string){return `eos-demo-community-messages-${spaceId}`}
-  function loadDemoMessages(spaceId:string){
-    const seed=demoMessages.filter(m=>m.space_id===spaceId)
-    const stored=sanitizeDemoMessages(demoStorage<CommunityMessage[]>(demoKey(spaceId),seed))
-    saveDemoStorage(demoKey(spaceId),stored)
-    setMessages(stored)
-    const fresh=spaces.map(s=>s.id===spaceId?{...s,unread_count:0,latest_body:stored.at(-1)?.body||null,latest_at:stored.at(-1)?.created_at||null}:s)
-    setSpaces(fresh);setOverview(fresh);saveDemoStorage('eos-demo-community-spaces',fresh)
-  }
-  async function loadLiveSpaces(){
-    if(!schoolId||!userId)return
-    setLoading(true);setError('')
-    try{
-      const {error:ensureError}=await supabase.rpc('ensure_default_community_spaces')
-      if(ensureError)throw ensureError
-      const {data,error}=await supabase.rpc('get_community_overview')
-      if(error)throw error
-      const rows=sortSpaces((data||[]) as CommunitySpace[])
-      setOverview(rows);setSpaces(rows);setSelected(current=>current||String(rows[0]?.id||''))
-    }catch(e:any){setError(e?.message||'La Communauté est momentanément indisponible.')}finally{setLoading(false)}
-  }
-  async function loadLiveMessages(spaceId:string){
-    if(!spaceId)return
-    try{
-      const {data,error}=await supabase.from('community_messages').select('id,space_id,sender_id,sender_name,sender_role,body,created_at').eq('space_id',spaceId).is('deleted_at',null).order('created_at',{ascending:true}).limit(80)
-      if(error)throw error
-      setMessages((data||[]).map((x:any)=>({id:x.id,space_id:x.space_id,sender_id:x.sender_id,sender_name:x.sender_name||'Membre',sender_role:(x.sender_role||'student') as Role,body:x.body,created_at:x.created_at,mine:x.sender_id===userId})))
-      await supabase.rpc('mark_community_space_read',{p_space_id:spaceId})
-      setOverview(prev=>prev.map(s=>s.id===spaceId?{...s,unread_count:0}:s))
-    }catch(e:any){setError(e?.message||'Impossible de charger cette conversation.')} 
-  }
-  useEffect(()=>{if(isDemo){setLoading(false);readDemoSpaces();return}loadLiveSpaces()},[mode,schoolId,userId,role,profile?.class_name])
-  useEffect(()=>{if(!selectedSpace)return;if(isDemo){loadDemoMessages(selectedSpace.id);return}loadLiveMessages(selectedSpace.id)},[selectedSpace?.id,isDemo])
-  useEffect(()=>{
-    if(isDemo||!schoolId)return
-    const channel=supabase.channel(`eos-community-${schoolId}`).on('postgres_changes',{event:'INSERT',schema:'public',table:'community_messages',filter:`school_id=eq.${schoolId}`},payload=>{
-      const row:any=payload.new
-      setOverview(prev=>prev.map(s=>s.id===row.space_id?{...s,unread_count:(s.unread_count||0)+(row.sender_id===userId?0:1),latest_body:row.body,latest_at:row.created_at}:s))
-      if(row.space_id===selectedSpace?.id){
-        setMessages(prev=>prev.some(x=>x.id===row.id)?prev:[...prev,{id:row.id,space_id:row.space_id,sender_id:row.sender_id,sender_name:row.sender_id===userId?'Vous':'Membre',sender_role:'student',body:row.body,created_at:row.created_at,mine:row.sender_id===userId}])
-        if(row.sender_id!==userId)void supabase.rpc('mark_community_space_read',{p_space_id:row.space_id})
-      }
-    }).subscribe()
-    return()=>{void supabase.removeChannel(channel)}
-  },[isDemo,schoolId,selectedSpace?.id,userId])
-
-  async function sendToEvolution(){
-    if(!detectedIdea||sending)return
-    setSending(true);setNotice('');setError('')
-    try{
-      if(isDemo){
-        const next:CommunityIdea={id:`idea-${Date.now()}`,title:detectedIdea.title,description:detectedIdea.description,author_name:profile?.full_name||roleLabels[role],role,status:'new',votes:0,created_at:new Date().toISOString()}
-        const stored=demoStorage<CommunityIdea[]>('eos-demo-agora-ideas',demoIdeaSeed)
-        saveDemoStorage('eos-demo-agora-ideas',[next,...stored])
-        addDemoImpact(userId,10,'Suggestion ajoutée à Evolution depuis la Communauté')
-      }else{
-        const {error}=await supabase.rpc('submit_community_idea',{p_title:detectedIdea.title,p_description:detectedIdea.description})
-        if(error)throw error
-        window.dispatchEvent(new Event('eos-points-updated'))
-      }
-      setIdeaAssistDismissed(true)
-      setNotice('La suggestion a été copiée dans Evolution. Votre message reste inchangé dans cette conversation.')
-    }catch(e:any){setError(e?.message||'Impossible d’ajouter cette suggestion à Evolution.')}finally{setSending(false)}
-  }
-  async function sendMessage(e:React.FormEvent){
-    e.preventDefault()
-    const body=draft.trim();if(!body||!selectedSpace||sending)return
-    if(body.length>2000){setNotice('Votre message dépasse la limite de 2 000 caractères.');return}
-    setSending(true);setNotice('');setError('')
-    try{
-      if(isDemo){
-        const local:CommunityMessage={id:`local-${Date.now()}`,space_id:selectedSpace.id,sender_id:userId,sender_name:profile?.full_name||roleLabels[role],sender_role:role,body,created_at:new Date().toISOString(),mine:true}
-        const next=[...messages,local];saveDemoStorage(demoKey(selectedSpace.id),next);setMessages(next);setOverview(prev=>prev.map(s=>s.id===selectedSpace.id?{...s,latest_body:body,latest_at:local.created_at,unread_count:0}:s));setDraft('');return
-      }
-      const {error}=await supabase.rpc('send_community_message',{p_space_id:selectedSpace.id,p_body:body})
-      if(error)throw error
-      setDraft(''); await loadLiveMessages(selectedSpace.id)
-    }catch(e:any){setError(e?.message||'Message non envoyé.')}finally{setSending(false)}
-  }
-  async function reportMessage(messageId:string){
-    const reason=window.prompt('Expliquez brièvement pourquoi vous signalez ce message. S’il s’agit d’une urgence, contactez directement l’établissement.')?.trim();if(!reason)return
-    try{if(isDemo){setNotice('Signalement démo enregistré localement.');return}const {error}=await supabase.rpc('report_community_message',{p_message_id:messageId,p_reason:reason});if(error)throw error;setNotice('Signalement reçu. Il sera examiné séparément de la discussion.')}catch(e:any){setError(e?.message||'Impossible de signaler ce message.')}  
-  }
-
-  return <div className="community-page">
-    <div className="section-intro community-page-intro">
-      <div><span className="eyebrow">ÉCOLE OS / COMMUNAUTÉ</span><h1>Vos conversations, au bon endroit.</h1><p>Choisissez un espace, puis écrivez dans le fil correspondant. Chaque espace a un objectif clair ; les annonces officielles restent séparées des discussions.</p></div>
-      <div className="community-status"><ShieldCheck size={16}/><span>{totalUnread?`${totalUnread} nouveau${totalUnread>1?'x':''} message${totalUnread>1?'s':''}`:'Tout est à jour'}</span></div>
-    </div>
-    {error&&<div className="alert error">{error}</div>}{notice&&<div className="alert">{notice}</div>}
-    <div className="community-shell-v2">
-      <aside className="community-inbox panel" aria-label="Vos conversations">
-        <div className="community-inbox-head"><div><span className="eyebrow">VOS ESPACES</span><h3>Conversations</h3></div><span className="community-count">{spaces.length}</span></div>
-        <label className="community-search"><Search size={16}/><input value={spaceFilter} onChange={e=>setSpaceFilter(e.target.value)} placeholder="Rechercher un espace…" aria-label="Rechercher un espace"/></label>
-        <div className="community-clarity"><Info size={15}/><div><b>Un espace = un contexte.</b><span>Les messages restent dans l’espace où ils ont été publiés. Les idées d’amélioration se proposent dans <strong>Evolution</strong>.</span></div></div>
-        <div className="community-room-list-v2">
-          {loading?<div className="skeleton"><i/><i/><i/></div>:filteredSpaces.map(space=>{
-            const unread=Number(space.unread_count||0)>0
-            return <button key={space.id} className={`community-conversation-item${selectedSpace?.id===space.id?' active':''}`} onClick={()=>setSelected(space.id)} aria-current={selectedSpace?.id===space.id?'true':undefined}>
-              <span className={`community-avatar ${space.kind}`} aria-hidden="true">{scopeIcon(space)}</span>
-              <span className="community-conversation-copy"><span className="community-conversation-line"><b>{space.name}</b>{unread&&<em>{space.unread_count}</em>}</span><small>{scopeLabel(space)}</small><span>{space.latest_body||'Aucun message pour le moment.'}</span></span>
-              <time>{space.latest_at?timeOnly(space.latest_at):''}</time>
-            </button>
-          })}
-          {!loading&&!filteredSpaces.length&&<Empty text="Aucun espace ne correspond à votre recherche."/>}
-        </div>
-        <div className="community-inbox-note"><LockKeyhole size={14}/><span>Les espaces accessibles dépendent de votre compte et de votre établissement.</span></div>
-      </aside>
-      <section className="community-chat-v2 panel">
-        {selectedSpace?<>
-          <header className="community-chat-head-v2">
-            <div className="community-chat-title-v2"><span className={`community-avatar large ${selectedSpace.kind}`}>{scopeIcon(selectedSpace)}</span><div><div className="community-title-line"><h3>{selectedSpace.name}</h3><span>{scopeLabel(selectedSpace)}</span></div><p>{selectedSpace.description}</p></div></div>
-          </header>
-          <div className="community-messages-v2" aria-live="polite">
-            {!visibleMessages.length&&<div className="community-empty-chat"><span className={`community-avatar large ${selectedSpace.kind}`}>{scopeIcon(selectedSpace)}</span><h3>Début de cette conversation</h3><p>{selectedSpace.kind==='announcement'?'Les annonces officielles publiées ici restent visibles pour les nouveaux arrivants.':'Les membres de cet espace peuvent écrire ici. Choisissez un autre espace si votre message concerne un autre sujet.'}</p></div>}
-            {visibleMessages.map((m,index)=><article className={`community-message-v2${m.mine?' mine':''}`} key={m.id}>
-              {!m.mine&&<div className="community-message-avatar-v2">{firstLetters(m.sender_name)}</div>}
-              <div className="community-message-wrap-v2"><div className="community-message-meta-v2"><b>{m.mine?'Vous':m.sender_name}</b><span>{roleLabels[m.sender_role]}</span><time>{timeOnly(m.created_at)}</time>{!m.mine&&<button className="icon-btn community-report" title="Signaler ce message" aria-label="Signaler ce message" onClick={()=>reportMessage(m.id)}><Flag size={13}/></button>}</div><div className="community-bubble-v2">{m.body}</div></div>
-            </article>)}
-          </div>
-          {detectedIdea&&!ideaAssistDismissed&&selectedSpace.kind==='community'&&<div className="community-idea-hint" role="status"><Lightbulb size={16}/><div><b>Vous semblez proposer une amélioration.</b><span>Le message peut rester ici. Si vous souhaitez aussi le soumettre à <strong>Evolution</strong>, vous pouvez le faire ; rien n’est déplacé ni supprimé automatiquement.</span></div><button type="button" className="outline" onClick={()=>void sendToEvolution()} disabled={sending}>Ajouter à Evolution</button><button type="button" className="icon-btn" title="Ne plus proposer" aria-label="Ne plus proposer" onClick={()=>setIdeaAssistDismissed(true)}><X size={15}/></button></div>}
-          <form className="community-composer-v2" onSubmit={sendMessage}>
-            <div className="community-composer-label"><span>{selectedSpace.kind==='announcement'?'Publier une annonce officielle':'Écrire dans '+selectedSpace.name}</span><small>{selectedSpace.kind==='announcement'?(canAnnounce?'Publication réservée au personnel autorisé.':'Lecture seule pour votre compte.'):'Votre message sera visible par les membres de cet espace.'}</small></div>
-            <div className="community-composer-row"><textarea value={draft} onChange={e=>{setDraft(e.target.value);setIdeaAssistDismissed(false)}} maxLength={2000} rows={3} placeholder={selectedSpace.kind==='announcement'&&!canAnnounce?'Vous pouvez consulter les annonces, mais ce compte ne peut pas en publier.':'Écrivez un message clair et directement lié à cet espace…'} disabled={selectedSpace.kind==='announcement'&&!canAnnounce} aria-label="Votre message"/><button className="primary community-send" disabled={sending||!draft.trim()||selectedSpace.kind==='announcement'&&!canAnnounce}>{sending?'Envoi…':<><Send size={15}/>Envoyer</>}</button></div>
-            <div className="community-compose-legal"><span>{draft.length}/2000</span><span>Un message reste dans cet espace.</span></div>
-          </form>
-        </>:<div className="community-no-selection"><MessageCircle size={26}/><h3>Sélectionnez une conversation</h3><p>Choisissez un espace à gauche pour lire les messages et participer à la discussion.</p></div>}
-      </section>
-    </div>
-  </div>
-}
 
 applyOwnerParam()
+try{sessionStorage.removeItem(STALE_RELOAD_KEY)}catch{/* stockage indisponible */}
+
+// Enregistre le service worker et vérifie régulièrement les mises à jour. Sans cet appel explicite,
+// le worker s'enregistre passivement mais le rythme de vérification n'est pas maîtrisé : un déploiement
+// peut rester invisible longtemps pour un onglet resté ouvert, avec le risque observé ci-dessus (un chunk
+// chargé à la demande qui n'existe plus sur le serveur). registerType:'autoUpdate' fait déjà recharger la
+// page dès qu'une mise à jour est détectée ; ce sondage périodique déclenche la détection elle-même.
+import('virtual:pwa-register').then(({registerSW})=>{
+  const intervalMs=15*60*1000 // Une seule vérification périodique : pas de double fetch du service worker.
+  registerSW({
+    onRegisteredSW(_swUrl,registration){
+      if(!registration)return
+      setInterval(()=>{
+        if(!registration.installing&&navigator.onLine)void registration.update()
+      },intervalMs)
+    },
+  })
+}).catch(()=>{/* PWA indisponible (ex. hors production) : l'app fonctionne normalement sans elle */})
+
 createRoot(document.getElementById('root')!).render(<ErrorBoundary><App/><Analytics beforeSend={skipOwnerVisits}/><SpeedInsights beforeSend={skipOwnerVisits}/></ErrorBoundary>)
