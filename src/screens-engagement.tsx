@@ -2,7 +2,7 @@ import React,{useEffect,useMemo,useState} from 'react'
 import {supabase} from './lib/supabase'
 import {fr,shortDate,Empty} from './shared'
 import {Mode} from './shared'
-import {Role,AppData,Profile,CommunityIdea,CommunityMessage,CommunitySpace,CommunitySurvey,CommunitySurveyOption,IdeaStatus,addDemoPoints,demoRoleIds,demoStorage,detectCommunityIntent,firstLetters,roleLabels,saveDemoStorage} from './appModel'
+import {Role,AppData,Profile,CommunityIdea,CommunityMessage,CommunitySpace,CommunitySurvey,CommunitySurveyOption,IdeaStatus,Reward,addDemoPoints,demoRoleIds,demoStorage,detectCommunityIntent,firstLetters,roleLabels,saveDemoStorage,demoIdeaSeed,demoSurveySeed,ideaStatusLabel,ideaStatusClass} from './appModel'
 import {BookOpen, CalendarDays, CheckCircle2, ChevronRight, CircleDollarSign, ClipboardList, Clock3, Gift, GraduationCap, KeyRound, Landmark, LogOut, Mail, Menu, Package, Save, School, ShieldCheck, ShoppingCart, FileUp, UserPlus, RefreshCw, Check, AlertTriangle, Sparkles, Star, UserRound, Users, UtensilsCrossed, WalletCards, X, Lightbulb, MessageSquarePlus, ThumbsUp, BarChart3, Palette, ListChecks, Gauge, Activity, ServerCog, MessageCircle, Megaphone, Send, Flag, ShieldAlert, Search, Info, UsersRound, LockKeyhole} from 'lucide-react'
 import {Panel} from './ui'
 

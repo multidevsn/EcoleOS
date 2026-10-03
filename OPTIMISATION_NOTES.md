@@ -26,3 +26,21 @@ La navigation entre onglets est principalement côté client : elle ne consomme 
 Les événements Analytics ne sont pas un compteur de navigation de l'application. Leur épuisement affecte la collecte / facturation Analytics, pas le routage React.
 
 Les 3 Cron Jobs actuels (`provider-costs`, `rollup`, `autopilot`) sont très en dessous de la limite actuelle de 100 Cron Jobs par projet.
+
+## Build fix + second-pass performance correction (2026-10-03)
+
+### Build fixes
+- Moved shared `IdeaStatus` labels/classes and demo Agora seeds into `src/appModel.ts` so the lazy engagement module can import them without undefined module scope errors.
+- Added the missing `roleLabel` and `IdeaStatus` imports in `src/screens-core.tsx`.
+- Added the missing `Reward` and shared demo seed/status imports in `src/screens-engagement.tsx`.
+- Removed duplicated local seed/status declarations from `src/screens-core.tsx`.
+
+### Runtime/loading correction
+- The initial data loader previously depended on the whole `role` state plus the complete `session` object. When the live profile returned its role, this could trigger a second complete `fetchLiveData()` pass. The loader now keys off `mode` + authenticated user id, avoiding that duplicate initial fetch.
+- Food/Rewards tab hydration no longer flips the global `data.loading` flag. This prevents the whole application shell from disappearing while a secondary tab fetch is running; only the target tab shows its fallback.
+- Hydration state is reset when the authenticated user/mode changes, preventing stale per-tab hydration flags from leaking between users.
+
+### Vercel events
+- Normal navigation is client-side React navigation and does not inherently require a Vercel Function invocation per click.
+- The project also contains a legacy `src/lib/telemetry.ts` + `/api/metrics/event` batching path, but it is not imported by the current client. It therefore does not generate calls in the current code path.
+- Vercel Web Analytics is separate from application navigation. Current pricing includes Web Analytics events in the platform quota/usage model; exhausting Web Analytics events affects analytics collection/billing, not static page delivery itself.

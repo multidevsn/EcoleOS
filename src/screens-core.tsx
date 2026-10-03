@@ -3,7 +3,7 @@ import {supabase} from './lib/supabase'
 import {fr,shortMoney,shortDate,Empty,KpiStrip,MiniBar,Card} from './shared'
 import {Panel,OrdersTable} from './ui'
 import {Mode} from './shared'
-import {Role,Theme,AppData,Profile,ScheduleRow,CommunityIdea,CommunitySurvey,avg,firstLetters,mention,money,roleLabels,foodCapabilities} from './appModel'
+import {Role,Theme,AppData,Profile,ScheduleRow,CommunityIdea,CommunitySurvey,IdeaStatus,avg,firstLetters,mention,money,roleLabels,roleLabel,foodCapabilities} from './appModel'
 import {BookOpen, CalendarDays, CheckCircle2, ChevronRight, CircleDollarSign, ClipboardList, Clock3, Gift, GraduationCap, KeyRound, Landmark, LogOut, Mail, Menu, Package, Save, School, ShieldCheck, ShoppingCart, FileUp, UserPlus, RefreshCw, Check, AlertTriangle, Sparkles, Star, UserRound, Users, UtensilsCrossed, WalletCards, X, Lightbulb, MessageSquarePlus, ThumbsUp, BarChart3, Palette, ListChecks, Gauge, Activity, ServerCog, MessageCircle, Megaphone, Send, Flag, ShieldAlert, Search, Info, UsersRound, LockKeyhole} from 'lucide-react'
 
 export function Food({role,mode,data,cart,setCart,checkout,message}:{role:Role,mode:Mode,data:AppData,cart:Record<string,number>,setCart:React.Dispatch<React.SetStateAction<Record<string,number>>>,checkout:()=>void,message:string}){
@@ -276,13 +276,3 @@ export function Account({role,mode,data,session,theme,onThemeChange,onSaved}:{ro
   </>
 }
 
-const ideaStatusLabel:Record<IdeaStatus,string>={new:'Nouvelle',review:'En étude',planned:'Planifiée',building:'En développement',done:'Disponible'}
-const ideaStatusClass:Record<IdeaStatus,string>={new:'new',review:'review',planned:'planned',building:'building',done:'done'}
-const demoIdeaSeed:CommunityIdea[]=[
-  {id:'demo-idea-1',title:'Un calendrier commun parents / professeurs',description:'Réunir devoirs, réunions et événements dans une vue unique.',author_name:'Fatou Ndiaye',role:'parent',status:'review',votes:28,created_at:'2026-09-21T10:00:00Z'},
-  {id:'demo-idea-2',title:'Notifier avant la fermeture de la cantine',description:'Prévenir automatiquement quand la fenêtre de commande approche.',author_name:'Cheikh Ba',role:'cafeteria',status:'planned',votes:19,created_at:'2026-09-20T08:30:00Z'},
-  {id:'demo-idea-3',title:'Ajouter un mode hors-ligne léger',description:'Consulter les données essentielles même avec une connexion instable.',author_name:'Moussa Diop',role:'teacher',status:'new',votes:14,created_at:'2026-09-19T15:20:00Z'}
-]
-const demoSurveySeed:CommunitySurvey[]=[
-  {id:'demo-survey-1',question:'Quel service devrait être amélioré ensuite ?',description:'Un vote simple. Les résultats servent à prioriser la feuille de route.',expires_at:'2026-10-02',options:[{id:'s1-a',label:'Messagerie',votes:38},{id:'s1-b',label:'Cantine',votes:24},{id:'s1-c',label:'Emploi du temps',votes:21},{id:'s1-d',label:'Paiements',votes:17}]}
-]

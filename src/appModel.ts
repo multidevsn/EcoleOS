@@ -23,6 +23,18 @@ export type ReferralInfo={code:string;status?:string}
 export type AppData={profile:Profile|null;studentId:string|null;school:SchoolInfo|null;subscription:SubscriptionInfo|null;referral:ReferralInfo|null;grades:Grade[];schedule:ScheduleRow[];payments:Payment[];points:PointEvent[];foodItems:FoodItem[];orders:Order[];rewards:Reward[];loading:boolean;error:string|null}
 
 export const roleLabels:Record<Role,string>={student:'Élève',parent:'Parent',teacher:'Professeur',admin:'Administration',director:'Directeur',cafeteria:'Cantine'}
+
+export const ideaStatusLabel:Record<IdeaStatus,string>={new:'Nouvelle',review:'En étude',planned:'Planifiée',building:'En développement',done:'Disponible'}
+export const ideaStatusClass:Record<IdeaStatus,string>={new:'new',review:'review',planned:'planned',building:'building',done:'done'}
+
+export const demoIdeaSeed:CommunityIdea[]=[
+  {id:'demo-idea-1',title:'Un calendrier commun parents / professeurs',description:'Réunir devoirs, réunions et événements dans une vue unique.',author_name:'Fatou Ndiaye',role:'parent',status:'review',votes:28,created_at:'2026-09-21T10:00:00Z'},
+  {id:'demo-idea-2',title:'Notifier avant la fermeture de la cantine',description:'Prévenir automatiquement quand la fenêtre de commande approche.',author_name:'Cheikh Ba',role:'cafeteria',status:'planned',votes:19,created_at:'2026-09-20T08:30:00Z'},
+  {id:'demo-idea-3',title:'Ajouter un mode hors-ligne léger',description:'Consulter les données essentielles même avec une connexion instable.',author_name:'Moussa Diop',role:'teacher',status:'new',votes:14,created_at:'2026-09-19T15:20:00Z'}
+]
+export const demoSurveySeed:CommunitySurvey[]=[
+  {id:'demo-survey-1',question:'Quel service devrait être amélioré ensuite ?',description:'Un vote simple. Les résultats servent à prioriser la feuille de route.',expires_at:'2026-10-02',options:[{id:'s1-a',label:'Messagerie',votes:38},{id:'s1-b',label:'Cantine',votes:24},{id:'s1-c',label:'Emploi du temps',votes:21},{id:'s1-d',label:'Paiements',votes:17}]}
+]
 export const isRole=(value:unknown):value is Role=>typeof value==='string' && Object.prototype.hasOwnProperty.call(roleLabels,value)
 export const roleLabel=(value:unknown)=>isRole(value)?roleLabels[value]:String(value??'—')
 export const foodCapabilities:Record<Role,{order:boolean;manageMenu:boolean}>={student:{order:true,manageMenu:false},parent:{order:true,manageMenu:false},teacher:{order:false,manageMenu:false},admin:{order:false,manageMenu:true},director:{order:false,manageMenu:false},cafeteria:{order:false,manageMenu:true}}

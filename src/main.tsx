@@ -501,6 +501,8 @@ function App(){
   const [cart,setCart]=useState<Record<string,number>>({})
   const [orderMsg,setOrderMsg]=useState('')
   const [data,setData]=useState<AppData>({profile:null,studentId:null,school:null,subscription:null,referral:null,grades:[],schedule:[],payments:[],points:[],foodItems:[],orders:[],rewards:[],loading:true,error:null})
+  const hydratedTabs=useRef<Set<string>>(new Set())
+  const [hydratingTab,setHydratingTab]=useState<'food'|'rewards'|null>(null)
 
   useEffect(()=>{localStorage.setItem('ecole-os-mode',mode)},[mode])
   useEffect(()=>{try{localStorage.setItem('ecole-os-theme',theme)}catch{};document.documentElement.dataset.theme=theme},[theme])
@@ -540,6 +542,8 @@ function App(){
   useEffect(()=>{
     let alive=true
     async function load(){
+      hydratedTabs.current.clear()
+      setHydratingTab(null)
       setData(d=>({...d,loading:true,error:null}))
       if(mode==='live'&&!session){setData(d=>({...d,loading:false}));return}
       const next=mode==='demo'?await fetchDemoData(role):await fetchLiveData(session.user.id)
@@ -550,12 +554,11 @@ function App(){
     }
     load()
     return()=>{alive=false}
-  },[mode,role,session])
+  },[mode,session?.user?.id])
 
   // ⚠ Tous les hooks doivent être appelés AVANT le moindre `return` : sinon React plante
   // (« Rendered more hooks than during the previous render ») dès que la session change → page blanche.
   useEffect(()=>{if(!canAccess(role,tab) && !(tab==='ops'&&platformAdmin))setTab('home')},[role,tab,platformAdmin])
-  const hydratedTabs=useRef<Set<string>>(new Set())
   useEffect(()=>{
     if(!session?.user?.id&&mode==='live')return
     const needsFood=tab==='food'&&!hydratedTabs.current.has('food')
@@ -564,7 +567,7 @@ function App(){
     const key=needsFood?'food':'rewards'
     hydratedTabs.current.add(key)
     let alive=true
-    setData(d=>({...d,loading:true,error:null}))
+    setHydratingTab(key)
     ;(async()=>{
       try{
         if(needsFood){
@@ -579,7 +582,7 @@ function App(){
             ])
             if(foodRes.error)throw foodRes.error
             if(ordersRes.error)throw ordersRes.error
-            if(alive)setData(d=>({...d,foodItems:(foodRes.data||[]) as FoodItem[],orders:(ordersRes.data||[]) as Order[],loading:false}))
+            if(alive)setData(d=>({...d,foodItems:(foodRes.data||[]) as FoodItem[],orders:(ordersRes.data||[]) as Order[]}))
           }else{
             const roleNow=data.profile?.role||role
             const isManager=roleNow==='admin'||roleNow==='cafeteria'
@@ -591,16 +594,18 @@ function App(){
             ])
             if(foodRes.error)throw foodRes.error
             if(ordersRes.error)throw ordersRes.error
-            if(alive)setData(d=>({...d,foodItems:(foodRes.data||[]) as FoodItem[],orders:(ordersRes.data||[]) as Order[],loading:false}))
+            if(alive)setData(d=>({...d,foodItems:(foodRes.data||[]) as FoodItem[],orders:(ordersRes.data||[]) as Order[]}))
           }
         }else if(needsRewards){
           const rewardsRes=await supabase.from('rewards').select('id,name,points_cost,active,audience_role').eq('active',true).order('points_cost')
           if(rewardsRes.error)throw rewardsRes.error
-          if(alive)setData(d=>({...d,rewards:(rewardsRes.data||[]) as Reward[],loading:false}))
+          if(alive)setData(d=>({...d,rewards:(rewardsRes.data||[]) as Reward[]}))
         }
       }catch(error:any){
         hydratedTabs.current.delete(key)
-        if(alive)setData(d=>({...d,loading:false,error:error?.message||`Impossible de charger ${key}.`}))
+        if(alive){setHydratingTab(null);setData(d=>({...d,error:error?.message||`Impossible de charger ${key}.`}))}
+      } finally {
+        if(alive)setHydratingTab(current=>current===key?null:current)
       }
     })()
     return()=>{alive=false}
@@ -649,11 +654,11 @@ function App(){
         {data.error&&<div className="alert error">{data.error}</div>}
         {!data.loading&&<>
           {tab==='home'&&<Home role={role} mode={mode} name={profileName} data={data} setTab={setTab}/>} 
-          {tab==='food'&&<React.Suspense fallback={<ScreenFallback/>}><FoodScreen role={role} mode={mode} data={data} cart={cart} setCart={setCart} checkout={checkout} message={orderMsg}/></React.Suspense>} 
+          {tab==='food'&&hydratingTab==='food'&&<ScreenFallback/>}{tab==='food'&&hydratingTab!=='food'&&<React.Suspense fallback={<ScreenFallback/>}><FoodScreen role={role} mode={mode} data={data} cart={cart} setCart={setCart} checkout={checkout} message={orderMsg}/></React.Suspense>} 
           {tab==='schedule'&&<React.Suspense fallback={<ScreenFallback/>}><ScheduleScreen role={role} mode={mode} data={data}/></React.Suspense>} 
           {tab==='grades'&&<React.Suspense fallback={<ScreenFallback/>}><GradesScreen role={role} data={data}/></React.Suspense>} 
           {tab==='payments'&&<React.Suspense fallback={<ScreenFallback/>}><PaymentsScreen role={role} mode={mode} data={data} session={session}/></React.Suspense>} 
-          {tab==='rewards'&&<React.Suspense fallback={<ScreenFallback/>}><RewardsScreen role={role} mode={mode} data={data}/></React.Suspense>}
+          {tab==='rewards'&&hydratingTab==='rewards'&&<ScreenFallback/>}{tab==='rewards'&&hydratingTab!=='rewards'&&<React.Suspense fallback={<ScreenFallback/>}><RewardsScreen role={role} mode={mode} data={data}/></React.Suspense>}
           {tab==='members'&&<React.Suspense fallback={<ScreenFallback/>}><MembersScreen role={role} session={session} mode={mode}/></React.Suspense>}
           {tab==='agora'&&<React.Suspense fallback={<ScreenFallback/>}><AgoraScreen role={role} mode={mode} session={session} profile={data.profile} schoolId={data.school?.id||null}/></React.Suspense>}
           {tab==='community'&&<React.Suspense fallback={<ScreenFallback/>}><CommunityScreen role={role} mode={mode} session={session} profile={data.profile} schoolId={data.school?.id||null}/></React.Suspense>}
