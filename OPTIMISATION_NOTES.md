@@ -44,3 +44,14 @@ Les 3 Cron Jobs actuels (`provider-costs`, `rollup`, `autopilot`) sont très en 
 - Normal navigation is client-side React navigation and does not inherently require a Vercel Function invocation per click.
 - The project also contains a legacy `src/lib/telemetry.ts` + `/api/metrics/event` batching path, but it is not imported by the current client. It therefore does not generate calls in the current code path.
 - Vercel Web Analytics is separate from application navigation. Current pricing includes Web Analytics events in the platform quota/usage model; exhausting Web Analytics events affects analytics collection/billing, not static page delivery itself.
+
+## Optimisation V3 — bootstrap et Supabase
+- Le client Supabase n'est plus importé statiquement par `main.tsx` : chargement dynamique après le premier rendu / seulement en live.
+- Le mode démo n'initialise plus Supabase Auth au démarrage.
+- Le bootstrap live ne récupère plus les tables inutiles pour le rôle courant.
+- `subjects` et `classes` sont récupérées via les relations PostgREST dans les requêtes grades/planning au lieu de requêtes séparées.
+- L'accueil utilise un aperçu : planning du jour, commandes du jour, derniers éléments nécessaires.
+- Notes / Emploi du temps / Paiements sont hydrates à l'ouverture de leur onglet et leurs écrans affichent un skeleton pendant la récupération.
+- Food et Récompenses restent chargés à la demande.
+- Les historiques détaillés sont plafonnés à 500 lignes pour éviter les payloads massifs ; pour une très grande école, la prochaine étape est la pagination `range()`.
+- Ajout de `performance.mark/measure` autour du chargement de données (`eos:data-load`) pour mesurer le gain sur le déploiement réel.

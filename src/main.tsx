@@ -2,7 +2,14 @@ import React, {useEffect, useMemo, useRef, useState} from 'react'
 import {Mode, fr, shortMoney, frToday, shortDate, Empty, KpiStrip, MiniBar, Card} from './shared'
 import {Panel, OrdersTable} from './ui'
 import {createRoot} from 'react-dom/client'
-import {supabase} from './lib/supabase'
+
+let supabaseModulePromise: Promise<typeof import('./lib/supabase')> | null = null
+const loadSupabase = async () => {
+  supabaseModulePromise ??= import('./lib/supabase')
+  const mod = await supabaseModulePromise
+  return mod.supabase
+}
+
 const TechnicalOpsScreen=React.lazy(()=>import('./TechnicalOpsScreen').then(m=>({default:m.TechnicalOps})))
 const FoodScreen=React.lazy(()=>import('./screens-core').then(m=>({default:m.Food})))
 const ScheduleScreen=React.lazy(()=>import('./screens-core').then(m=>({default:m.Schedule})))
@@ -167,6 +174,7 @@ function Login({onSchool,onDemo}:{onSchool:()=>void,onDemo:(r:Role)=>void}){
     const demoRole=(Object.keys(demoCredentials) as Role[]).find(r=>demoCredentials[r].email===email.trim().toLowerCase()&&demoCredentials[r].password===password)
     if(demoRole){setLoading(false);onDemo(demoRole);return}
 
+    const supabase=await loadSupabase()
     const {data,error}=await supabase.auth.signInWithPassword({email:email.trim(),password})
     if(error){
       setError(error.message==='Invalid login credentials'?'Email ou mot de passe incorrect.':error.message)
@@ -278,9 +286,11 @@ function Login({onSchool,onDemo}:{onSchool:()=>void,onDemo:(r:Role)=>void}){
 }
 
 async function fetchLiveData(userId:string):Promise<AppData>{
+  const supabase=await loadSupabase()
   const empty:AppData={profile:null,studentId:null,school:null,subscription:null,referral:null,grades:[],schedule:[],payments:[],points:[],foodItems:[],orders:[],rewards:[],loading:false,error:null}
   try{
-    // ÉTAPE 1 : identité et relation élève/parent.
+    // Bootstrap léger : on ne charge que ce dont l'accueil a besoin. Les écrans
+    // lourds (Notes / Planning / Paiements / Food / Récompenses) complètent à l'ouverture.
     const {data:profileRow,error:profileError}=await supabase
       .from('profiles')
       .select('id,full_name,role,student_code,school_id')
@@ -290,92 +300,85 @@ async function fetchLiveData(userId:string):Promise<AppData>{
 
     const effectiveRole=profileRow.role as Role
     let studentId:string|null=effectiveRole==='student'?userId:null
-
     if(effectiveRole==='parent'){
       const {data:links,error}=await supabase.from('parent_students').select('student_id').eq('parent_id',userId).limit(1)
       if(error)throw error
       studentId=links?.[0]?.student_id||null
     }
 
-    // Une seule lecture de class_members sert à la fois au libellé de classe et au planning.
     let className:string|null=null
     let classIds:string[]=[]
     if(studentId){
-      const {data:members,error}=await supabase.from('class_members').select('class_id').eq('student_id',studentId)
+      const {data:members,error}=await supabase
+        .from('class_members')
+        .select('class_id,classes(name)')
+        .eq('student_id',studentId)
       if(error)throw error
       classIds=(members||[]).map((m:any)=>String(m.class_id)).filter(Boolean)
-      const classId=classIds[0]
-      if(classId){
-        const {data:classRow,error:classError}=await supabase.from('classes').select('name').eq('id',classId).maybeSingle()
-        if(classError)throw classError
-        className=classRow?.name||null
-      }
+      className=(members?.[0] as any)?.classes?.name||null
     }
 
-    const needsAcademic=['student','parent','teacher','admin'].includes(effectiveRole)
-    const needsGrades=effectiveRole==='student'||effectiveRole==='parent'||effectiveRole==='teacher'||effectiveRole==='admin'
-    const needsSchedule=needsGrades
-    const needsPayments=!!studentId||effectiveRole==='admin'
-    const needsOrders=effectiveRole==='student'||effectiveRole==='parent'||effectiveRole==='admin'||effectiveRole==='cafeteria'
-    const needsPoints=true
+    const todayNo=((new Date().getDay()+6)%7)+1
+    const todayDate=isoDate(new Date())
+    const wantsGrades=['student','parent','teacher'].includes(effectiveRole)
+    const wantsSchedule=['student','parent','teacher','admin'].includes(effectiveRole)
+    const wantsPayments=['student','parent','admin'].includes(effectiveRole)
+    const wantsOrders=['student','parent','admin','cafeteria'].includes(effectiveRole)
+    const wantsPoints=effectiveRole==='student'
+    const isDirector=effectiveRole==='director'
 
-    // ÉTAPE 2 : toutes les lectures indépendantes partent ensemble.
-    const [subjectsRes,gradesRes,scheduleRes,paymentsRes,pointsRes,ordersRes,schoolRes,subRes,refRes]=await Promise.all([
-      needsAcademic
-        ? supabase.from('subjects').select('id,name,coefficient')
-        : Promise.resolve({data:[],error:null} as any),
-      needsGrades
+    const [gradesRes,scheduleRes,paymentsRes,pointsRes,ordersRes,schoolRes,subRes,refRes]=await Promise.all([
+      wantsGrades
         ? (studentId
-            ? supabase.from('grades').select('id,subject_id,value,term,created_at').eq('student_id',studentId).order('created_at',{ascending:false})
-            : effectiveRole==='teacher'||effectiveRole==='admin'
-              ? supabase.from('grades').select('id,subject_id,value,term,created_at').order('created_at',{ascending:false}).limit(50)
+            ? supabase.from('grades').select('id,subject_id,value,term,created_at,subjects(name,coefficient)').eq('student_id',studentId).order('created_at',{ascending:false}).limit(500)
+            : effectiveRole==='teacher'
+              ? supabase.from('grades').select('id,subject_id,value,term,created_at,subjects(name,coefficient)').order('created_at',{ascending:false}).limit(10)
               : Promise.resolve({data:[],error:null} as any))
         : Promise.resolve({data:[],error:null} as any),
-      needsSchedule
+      wantsSchedule
         ? (effectiveRole==='teacher'
-            ? supabase.from('schedule').select('id,weekday,starts_at,ends_at,room,teacher_id,class_id,subject_id').eq('teacher_id',userId).order('weekday').order('starts_at')
+            ? supabase.from('schedule').select('id,weekday,starts_at,ends_at,room,teacher_id,class_id,subject_id,subjects(name),classes(name)').eq('teacher_id',userId).eq('weekday',todayNo).order('starts_at').limit(20)
             : studentId && classIds.length
-              ? supabase.from('schedule').select('id,weekday,starts_at,ends_at,room,teacher_id,class_id,subject_id').in('class_id',classIds).order('weekday').order('starts_at')
+              ? supabase.from('schedule').select('id,weekday,starts_at,ends_at,room,teacher_id,class_id,subject_id,subjects(name),classes(name)').in('class_id',classIds).eq('weekday',todayNo).order('starts_at').limit(20)
               : effectiveRole==='admin'
-                ? supabase.from('schedule').select('id,weekday,starts_at,ends_at,room,teacher_id,class_id,subject_id').order('weekday').order('starts_at')
+                ? supabase.from('schedule').select('id,weekday,starts_at,ends_at,room,teacher_id,class_id,subject_id,subjects(name),classes(name)').eq('weekday',todayNo).order('starts_at').limit(30)
                 : Promise.resolve({data:[],error:null} as any))
         : Promise.resolve({data:[],error:null} as any),
-      needsPayments
+      wantsPayments
         ? (studentId
-            ? supabase.from('school_payments').select('id,description,amount_xof,status,due_date').eq('user_id',studentId).order('due_date',{ascending:false})
+            ? supabase.from('school_payments').select('id,description,amount_xof,status,due_date').eq('user_id',studentId).eq('status','pending').order('due_date',{ascending:false}).limit(50)
             : effectiveRole==='admin'
-              ? supabase.from('school_payments').select('id,description,amount_xof,status,due_date').order('due_date',{ascending:false}).limit(30)
+              ? supabase.from('school_payments').select('id,description,amount_xof,status,due_date').eq('status','pending').order('due_date',{ascending:false}).limit(20)
               : Promise.resolve({data:[],error:null} as any))
         : Promise.resolve({data:[],error:null} as any),
-      needsPoints
-        ? supabase.from('point_ledger').select('id,points,reason,created_at').eq('user_id',profileRow.id).order('created_at',{ascending:false}).limit(50)
+      wantsPoints
+        ? supabase.from('point_ledger').select('id,points,reason,created_at').eq('user_id',userId).order('created_at',{ascending:false}).limit(50)
         : Promise.resolve({data:[],error:null} as any),
-      needsOrders
+      wantsOrders
         ? (effectiveRole==='admin'||effectiveRole==='cafeteria'
-            ? supabase.from('food_orders').select('id,total_xof,status,pickup_date,pickup_slot,created_at').order('created_at',{ascending:false}).limit(40)
-            : supabase.from('food_orders').select('id,total_xof,status,pickup_date,pickup_slot,created_at').eq('user_id',userId).order('created_at',{ascending:false}).limit(20))
+            ? supabase.from('food_orders').select('id,total_xof,status,pickup_date,pickup_slot,created_at').eq('pickup_date',todayDate).order('created_at',{ascending:false}).limit(40)
+            : supabase.from('food_orders').select('id,total_xof,status,pickup_date,pickup_slot,created_at').eq('user_id',userId).eq('pickup_date',todayDate).order('created_at',{ascending:false}).limit(20))
         : Promise.resolve({data:[],error:null} as any),
-      profileRow.school_id
+      isDirector && profileRow.school_id
         ? supabase.from('schools').select('id,name,city,director_id').eq('id',profileRow.school_id).maybeSingle()
         : Promise.resolve({data:null,error:null} as any),
-      profileRow.school_id&&effectiveRole==='director'
+      isDirector && profileRow.school_id
         ? supabase.from('school_subscriptions').select('id,plan,status,billing_price_xof,current_period_end').eq('school_id',profileRow.school_id).order('created_at',{ascending:false}).limit(1).maybeSingle()
         : Promise.resolve({data:null,error:null} as any),
-      profileRow.school_id
+      isDirector && profileRow.school_id
         ? supabase.from('referral_codes').select('code').eq('owner_id',userId).maybeSingle()
         : Promise.resolve({data:null,error:null} as any),
     ])
 
-    for(const result of [subjectsRes,gradesRes,scheduleRes,paymentsRes,pointsRes,ordersRes,schoolRes,subRes,refRes]){
+    for(const result of [gradesRes,scheduleRes,paymentsRes,pointsRes,ordersRes,schoolRes,subRes,refRes]){
       if(result?.error)throw result.error
     }
 
-    const subjectMap=Object.fromEntries((subjectsRes.data||[]).map((sub:any)=>[sub.id,sub]))
     const grades:Grade[]=(gradesRes.data||[]).map((g:any)=>({
       id:g.id,
-      subject:subjectMap[g.subject_id]?.name||'Matière',
+      subject:g.subjects?.name||'Matière',
       value:Number(g.value),
-      coefficient:Number(subjectMap[g.subject_id]?.coefficient||1),
+      coefficient:Number(g.subjects?.coefficient||1),
       term:g.term,
     }))
     const schedule:ScheduleRow[]=(scheduleRes.data||[]).map((x:any)=>({
@@ -383,11 +386,13 @@ async function fetchLiveData(userId:string):Promise<AppData>{
       weekday:Number(x.weekday),
       starts_at:x.starts_at,
       ends_at:x.ends_at,
-      subject:subjectMap[x.subject_id]?.name||'Cours',
+      subject:x.subjects?.name||'Cours',
       room:x.room,
-      class_name:studentId?className||'Classe':'Classe',
+      class_name:x.classes?.name||className||'Classe',
     }))
 
+    // Anti-surprise UX : l'accueil travaille volontairement avec un aperçu.
+    // Les onglets détaillés rechargent leur historique complet à l'ouverture.
     return {
       profile:{id:profileRow.id,full_name:profileRow.full_name,role:effectiveRole,email:'',school_id:profileRow.school_id,student_code:profileRow.student_code,class_name:className},
       studentId,
@@ -406,8 +411,8 @@ async function fetchLiveData(userId:string):Promise<AppData>{
     }
   }catch(e:any){return {...empty,error:e?.message||'Impossible de charger les données.'}}
 }
-
 async function fetchDemoData(role:Role):Promise<AppData>{
+  const supabase=await loadSupabase()
   const profileId=demoRoleIds[role]
   const studentId=demoRoleIds.student
   try{
@@ -467,6 +472,7 @@ function SchoolOnboarding({onBack}:{onBack:()=>void}){
   const [busy,setBusy]=useState(false)
   async function submit(e:React.FormEvent){
     e.preventDefault();setBusy(true);setMsg('')
+    const supabase=await loadSupabase()
     const {data,error}=await supabase.auth.signUp({email:director.email,password:director.password,options:{data:{full_name:director.name}}})
     if(error){setBusy(false);setMsg(error.message);return}
     if(!data.session){
@@ -502,15 +508,31 @@ function App(){
   const [orderMsg,setOrderMsg]=useState('')
   const [data,setData]=useState<AppData>({profile:null,studentId:null,school:null,subscription:null,referral:null,grades:[],schedule:[],payments:[],points:[],foodItems:[],orders:[],rewards:[],loading:true,error:null})
   const hydratedTabs=useRef<Set<string>>(new Set())
-  const [hydratingTab,setHydratingTab]=useState<'food'|'rewards'|null>(null)
+  const [hydratingTab,setHydratingTab]=useState<'food'|'rewards'|'grades'|'schedule'|'payments'|null>(null)
 
   useEffect(()=>{localStorage.setItem('ecole-os-mode',mode)},[mode])
   useEffect(()=>{try{localStorage.setItem('ecole-os-theme',theme)}catch{};document.documentElement.dataset.theme=theme},[theme])
   useEffect(()=>{
-    supabase.auth.getSession().then(({data}:any)=>setSession(data.session))
-    const {data:{subscription}}=supabase.auth.onAuthStateChange((_e:any,s:any)=>setSession(s))
-    return()=>subscription.unsubscribe()
-  },[])
+    let alive=true
+    let unsubscribe:undefined|(()=>void)
+    if(mode==='demo'){
+      setSession(null)
+      return()=>{alive=false}
+    }
+    ;(async()=>{
+      try{
+        const supabase=await loadSupabase()
+        const {data:{session:dataSession}}=await supabase.auth.getSession()
+        const {data:{subscription}}=supabase.auth.onAuthStateChange((_e:any,s:any)=>{if(alive)setSession(s)})
+        unsubscribe=()=>subscription.unsubscribe()
+        if(alive)setSession(dataSession)
+      }catch(error){
+        console.error('École OS — initialisation Auth impossible',error)
+        if(alive)setSession(null)
+      }
+    })()
+    return()=>{alive=false;unsubscribe?.()}
+  },[mode])
   useEffect(()=>{
     if(mode==='live'&&data.profile?.role&&role!==data.profile.role)setRole(data.profile.role)
   },[mode,data.profile?.role,role])
@@ -546,7 +568,10 @@ function App(){
       setHydratingTab(null)
       setData(d=>({...d,loading:true,error:null}))
       if(mode==='live'&&!session){setData(d=>({...d,loading:false}));return}
+      performance.mark('eos:data-load:start')
       const next=mode==='demo'?await fetchDemoData(role):await fetchLiveData(session.user.id)
+      performance.mark('eos:data-load:end')
+      performance.measure('eos:data-load','eos:data-load:start','eos:data-load:end')
       if(alive){
         setData(next)
         if(mode==='live'&&next.profile?.role)setRole(next.profile.role)
@@ -563,13 +588,17 @@ function App(){
     if(!session?.user?.id&&mode==='live')return
     const needsFood=tab==='food'&&!hydratedTabs.current.has('food')
     const needsRewards=tab==='rewards'&&!hydratedTabs.current.has('rewards')
-    if(!needsFood&&!needsRewards)return
-    const key=needsFood?'food':'rewards'
+    const needsGrades=tab==='grades'&&!hydratedTabs.current.has('grades')
+    const needsSchedule=tab==='schedule'&&!hydratedTabs.current.has('schedule')
+    const needsPayments=tab==='payments'&&!hydratedTabs.current.has('payments')
+    if(!needsFood&&!needsRewards&&!needsGrades&&!needsSchedule&&!needsPayments)return
+    const key=(needsFood?'food':needsRewards?'rewards':needsGrades?'grades':needsSchedule?'schedule':'payments') as 'food'|'rewards'|'grades'|'schedule'|'payments'
     hydratedTabs.current.add(key)
     let alive=true
     setHydratingTab(key)
     ;(async()=>{
       try{
+        const supabase=await loadSupabase()
         if(needsFood){
           if(mode==='demo'){
             const roleNow=role
@@ -587,7 +616,7 @@ function App(){
             const roleNow=data.profile?.role||role
             const isManager=roleNow==='admin'||roleNow==='cafeteria'
             const [foodRes,ordersRes]=await Promise.all([
-              supabase.from('food_items').select('id,name,price_xof,active').eq('active',true).order('name'),
+              supabase.from('food_items').select('id,name,price_xof,active').order('name'),
               isManager
                 ?supabase.from('food_orders').select('id,total_xof,status,pickup_date,pickup_slot,created_at').order('created_at',{ascending:false}).limit(40)
                 :supabase.from('food_orders').select('id,total_xof,status,pickup_date,pickup_slot,created_at').eq('user_id',session.user.id).order('created_at',{ascending:false}).limit(20)
@@ -597,9 +626,56 @@ function App(){
             if(alive)setData(d=>({...d,foodItems:(foodRes.data||[]) as FoodItem[],orders:(ordersRes.data||[]) as Order[]}))
           }
         }else if(needsRewards){
-          const rewardsRes=await supabase.from('rewards').select('id,name,points_cost,active,audience_role').eq('active',true).order('points_cost')
+          const promises:any[]=[supabase.from('rewards').select('id,name,points_cost,active,audience_role').eq('active',true).order('points_cost')]
+          if(mode==='live' && (role==='student'||role==='parent')) promises.push(supabase.from('point_ledger').select('id,points,reason,created_at').eq('user_id',session.user.id).order('created_at',{ascending:false}).limit(100))
+          else if(mode==='demo') promises.push(supabase.from('demo_points').select('id,points,reason,created_at').eq('profile_id',demoRoleIds[role]).order('created_at',{ascending:false}).limit(100))
+          const [rewardsRes,pointsRes]=await Promise.all(promises)
           if(rewardsRes.error)throw rewardsRes.error
-          if(alive)setData(d=>({...d,rewards:(rewardsRes.data||[]) as Reward[]}))
+          if(pointsRes?.error)throw pointsRes.error
+          if(alive)setData(d=>({...d,rewards:(rewardsRes.data||[]) as Reward[],...(pointsRes?{points:(pointsRes.data||[]) as PointEvent[]}: {})}))
+        }else if(needsGrades){
+          if(mode==='demo'){
+            if(alive)setHydratingTab(null)
+          }else{
+            const owner=(role==='student'||role==='parent')?data.studentId:role==='teacher'?session.user.id:null
+            let gradesRes:any
+            if(owner) gradesRes=await supabase.from('grades').select('id,subject_id,value,term,created_at,subjects(name,coefficient)').eq('student_id',owner).order('created_at',{ascending:false}).limit(500)
+            else if(role==='admin') gradesRes=await supabase.from('grades').select('id,subject_id,value,term,created_at,subjects(name,coefficient)').order('created_at',{ascending:false}).limit(500)
+            else gradesRes={data:[],error:null}
+            if(gradesRes.error)throw gradesRes.error
+            const grades=(gradesRes.data||[]).map((g:any)=>({id:g.id,subject:g.subjects?.name||'Matière',value:Number(g.value),coefficient:Number(g.subjects?.coefficient||1),term:g.term})) as Grade[]
+            if(alive)setData(d=>({...d,grades}))
+          }
+        }else if(needsSchedule){
+          if(mode==='demo'){
+            if(alive)setHydratingTab(null)
+          }else{
+            let q:any=supabase.from('schedule').select('id,weekday,starts_at,ends_at,room,teacher_id,class_id,subject_id,subjects(name),classes(name)').order('weekday').order('starts_at').limit(500)
+            if(role==='teacher')q=q.eq('teacher_id',session.user.id)
+            else if(data.studentId){
+              const {data:members,error}=await supabase.from('class_members').select('class_id').eq('student_id',data.studentId)
+              if(error)throw error
+              const ids=(members||[]).map((m:any)=>m.class_id).filter(Boolean)
+              q=ids.length?q.in('class_id',ids):q.eq('id','00000000-0000-0000-0000-000000000000')
+            }else if(role!=='admin'){
+              q=q.eq('id','00000000-0000-0000-0000-000000000000')
+            }
+            const scheduleRes=await q
+            if(scheduleRes.error)throw scheduleRes.error
+            const schedule=(scheduleRes.data||[]).map((x:any)=>({id:x.id,weekday:Number(x.weekday),starts_at:x.starts_at,ends_at:x.ends_at,subject:x.subjects?.name||'Cours',room:x.room,class_name:x.classes?.name||data.profile?.class_name||'Classe'})) as ScheduleRow[]
+            if(alive)setData(d=>({...d,schedule}))
+          }
+        }else if(needsPayments){
+          if(mode==='demo'){
+            if(alive)setHydratingTab(null)
+          }else{
+            let q:any=supabase.from('school_payments').select('id,description,amount_xof,status,due_date').order('due_date',{ascending:false}).limit(500)
+            if(data.studentId)q=q.eq('user_id',data.studentId)
+            else if(role!=='admin')q=q.eq('id','00000000-0000-0000-0000-000000000000')
+            const paymentsRes=await q
+            if(paymentsRes.error)throw paymentsRes.error
+            if(alive)setData(d=>({...d,payments:(paymentsRes.data||[]) as Payment[]}))
+          }
         }
       }catch(error:any){
         hydratedTabs.current.delete(key)
@@ -609,7 +685,7 @@ function App(){
       }
     })()
     return()=>{alive=false}
-  },[mode,tab,session?.user?.id,role,data.profile?.role])
+  },[mode,tab,session?.user?.id,role,data.profile?.role,data.studentId])
   function enterDemo(r:Role){try{sessionStorage.setItem('ecole-os-demo-role',r)}catch{}setCart({});setOrderMsg('');setTab('home');setRole(r);setMode('demo')}
   if(schoolSignup)return <SchoolOnboarding onBack={()=>setSchoolSignup(false)}/>
   if(mode==='live'&&!session)return <Login onSchool={()=>setSchoolSignup(true)} onDemo={enterDemo}/>
@@ -618,7 +694,7 @@ function App(){
   const availableNav=nav.filter(([id])=>canAccess(role,id) || (id==='ops'&&platformAdmin))
   const primaryItems=availableNav.filter(([id])=>primaryTabs[role].includes(id))
   const secondaryItems=availableNav.filter(([id])=>!primaryTabs[role].includes(id) && id!=='account')
-  async function logout(){await supabase.auth.signOut();setMode('live')}
+  async function logout(){const supabase=await loadSupabase();await supabase.auth.signOut();setMode('live')}
   async function checkout(){
     const items=Object.entries(cart).filter(([,q])=>q).map(([id,quantity])=>({id,quantity}))
     if(!items.length)return
@@ -655,9 +731,9 @@ function App(){
         {!data.loading&&<>
           {tab==='home'&&<Home role={role} mode={mode} name={profileName} data={data} setTab={setTab}/>} 
           {tab==='food'&&hydratingTab==='food'&&<ScreenFallback/>}{tab==='food'&&hydratingTab!=='food'&&<React.Suspense fallback={<ScreenFallback/>}><FoodScreen role={role} mode={mode} data={data} cart={cart} setCart={setCart} checkout={checkout} message={orderMsg}/></React.Suspense>} 
-          {tab==='schedule'&&<React.Suspense fallback={<ScreenFallback/>}><ScheduleScreen role={role} mode={mode} data={data}/></React.Suspense>} 
-          {tab==='grades'&&<React.Suspense fallback={<ScreenFallback/>}><GradesScreen role={role} data={data}/></React.Suspense>} 
-          {tab==='payments'&&<React.Suspense fallback={<ScreenFallback/>}><PaymentsScreen role={role} mode={mode} data={data} session={session}/></React.Suspense>} 
+          {tab==='schedule'&&hydratingTab==='schedule'&&<ScreenFallback/>}{tab==='schedule'&&hydratingTab!=='schedule'&&<React.Suspense fallback={<ScreenFallback/>}><ScheduleScreen role={role} mode={mode} data={data}/></React.Suspense>} 
+          {tab==='grades'&&hydratingTab==='grades'&&<ScreenFallback/>}{tab==='grades'&&hydratingTab!=='grades'&&<React.Suspense fallback={<ScreenFallback/>}><GradesScreen role={role} data={data}/></React.Suspense>} 
+          {tab==='payments'&&hydratingTab==='payments'&&<ScreenFallback/>}{tab==='payments'&&hydratingTab!=='payments'&&<React.Suspense fallback={<ScreenFallback/>}><PaymentsScreen role={role} mode={mode} data={data} session={session}/></React.Suspense>} 
           {tab==='rewards'&&hydratingTab==='rewards'&&<ScreenFallback/>}{tab==='rewards'&&hydratingTab!=='rewards'&&<React.Suspense fallback={<ScreenFallback/>}><RewardsScreen role={role} mode={mode} data={data}/></React.Suspense>}
           {tab==='members'&&<React.Suspense fallback={<ScreenFallback/>}><MembersScreen role={role} session={session} mode={mode}/></React.Suspense>}
           {tab==='agora'&&<React.Suspense fallback={<ScreenFallback/>}><AgoraScreen role={role} mode={mode} session={session} profile={data.profile} schoolId={data.school?.id||null}/></React.Suspense>}
