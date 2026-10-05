@@ -9,7 +9,7 @@ type QueuedEvent={metric:string,quantity:number,metadata:UsageMetadata}
 const queue:QueuedEvent[]=[]
 let flushTimer:ReturnType<typeof setTimeout>|null=null
 const FLUSH_DELAY_MS=15000  // regroupe les événements sur 15s avant envoi
-const MAX_QUEUE=50          // doit rester égal à la limite acceptée par le serveur (voir api/metrics/event.ts)
+const MAX_QUEUE=50          // doit rester égal à la limite acceptée par le serveur (voir api/metrics/_event.ts)
 
 async function sendBatch(events:QueuedEvent[]){
   if(!events.length)return
