@@ -7,8 +7,8 @@ function json(res:VercelResponse,status:number,body:unknown){return res.status(s
 
 async function handler(req:VercelRequest,res:VercelResponse){
   if(req.method!=='POST') return json(res,405,{error:'Method not allowed'})
-  if(!env('WAVE_API_KEY')) return json(res,503,{error:'Wave non configurÃ© : ajoute WAVE_API_KEY cÃ´tÃ© serveur.'})
-  if(!env('SUPABASE_URL')||!env('SUPABASE_PUBLISHABLE_KEY')||!env('SUPABASE_SECRET_KEY')) return json(res,503,{error:'Supabase serveur non configurÃ© : renseigne SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY et SUPABASE_SECRET_KEY.'})
+  if(!env('WAVE_API_KEY')) return json(res,503,{error:'Wave non configuré : ajoute WAVE_API_KEY côté serveur.'})
+  if(!env('SUPABASE_URL')||!env('SUPABASE_PUBLISHABLE_KEY')||!env('SUPABASE_SECRET_KEY')) return json(res,503,{error:'Supabase serveur non configuré : renseigne SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY et SUPABASE_SECRET_KEY.'})
 
   const auth=String(req.headers.authorization||'')
   const token=auth.startsWith('Bearer ')?auth.slice(7):''
@@ -18,7 +18,7 @@ async function handler(req:VercelRequest,res:VercelResponse){
     const userClient=createClient(env('SUPABASE_URL'),env('SUPABASE_PUBLISHABLE_KEY'),{global:{headers:{Authorization:`Bearer ${token}`}}})
     const admin=createClient(env('SUPABASE_URL'),env('SUPABASE_SECRET_KEY'))
     const {data:{user},error:userError}=await userClient.auth.getUser(token)
-    if(userError||!user)return json(res,401,{error:'Session invalide ou expirÃ©e.'})
+    if(userError||!user)return json(res,401,{error:'Session invalide ou expirée.'})
 
     const type=req.body?.type
     let amount=0
@@ -58,16 +58,16 @@ async function handler(req:VercelRequest,res:VercelResponse){
       const paymentId=String(req.body?.payment_id||'')
       if(!paymentId)return json(res,400,{error:'Paiement scolaire manquant.'})
       const {data:payment,error:paymentError}=await userClient.from('school_payments').select('id,user_id,amount_xof,status').eq('id',paymentId).eq('status','pending').single()
-      if(paymentError||!payment||payment.user_id!==user.id)return json(res,403,{error:'Paiement introuvable ou dÃ©jÃ  traitÃ©.'})
+      if(paymentError||!payment||payment.user_id!==user.id)return json(res,403,{error:'Paiement introuvable ou déjà traité.'})
       amount=Number(payment.amount_xof)
       resource='school_payments';resourceId=payment.id;clientReference=`school-payment:${payment.id}`
     }else if(type==='billing_cycle'){
       const cycleId=String(req.body?.billing_cycle_id||'')
       if(!cycleId)return json(res,400,{error:'Cycle de facturation manquant.'})
       const {data:profile,error:profileError}=await admin.from('profiles').select('id,role,school_id').eq('id',user.id).single()
-      if(profileError||!profile||profile.role!=='director'||!profile.school_id)return json(res,403,{error:'Seul le directeur peut rÃ©gler le cycle de facturation.'})
+      if(profileError||!profile||profile.role!=='director'||!profile.school_id)return json(res,403,{error:'Seul le directeur peut régler le cycle de facturation.'})
       const {data:cycle,error:cycleError}=await admin.from('billing_cycles').select('id,school_id,amount_xof,status,provider_checkout_id').eq('id',cycleId).eq('school_id',profile.school_id).in('status',['due','past_due']).single()
-      if(cycleError||!cycle)return json(res,403,{error:'Cycle introuvable ou dÃ©jÃ  rÃ©glÃ©.'})
+      if(cycleError||!cycle)return json(res,403,{error:'Cycle introuvable ou déjà réglé.'})
       const {data:schoolSub,error:schoolSubError}=await admin.from('school_subscriptions').select('billing_provider,billing_price_xof').eq('school_id',profile.school_id).order('created_at',{ascending:false}).limit(1).maybeSingle()
       if(schoolSubError)throw schoolSubError
       amount=Math.max(0,Number(cycle.amount_xof)-(schoolSub?.billing_provider==='paddle'?Number(schoolSub.billing_price_xof||0):0))
@@ -77,9 +77,9 @@ async function handler(req:VercelRequest,res:VercelResponse){
       const subscriptionId=String(req.body?.subscription_id||'')
       if(!subscriptionId)return json(res,400,{error:'Abonnement manquant.'})
       const {data:profile,error:profileError}=await admin.from('profiles').select('id,role,school_id').eq('id',user.id).single()
-      if(profileError||!profile||profile.role!=='director'||!profile.school_id)return json(res,403,{error:'Seul le directeur de lâ€™Ã©cole peut payer cet abonnement.'})
+      if(profileError||!profile||profile.role!=='director'||!profile.school_id)return json(res,403,{error:'Seul le directeur de l’école peut payer cet abonnement.'})
       const {data:sub,error:subError}=await admin.from('school_subscriptions').select('id,school_id,plan,billing_price_xof,status').eq('id',subscriptionId).eq('school_id',profile.school_id).eq('status','pending').single()
-      if(subError||!sub)return json(res,403,{error:'Abonnement introuvable ou dÃ©jÃ  payÃ©.'})
+      if(subError||!sub)return json(res,403,{error:'Abonnement introuvable ou déjà payé.'})
       amount=Number(sub.billing_price_xof)
       resource='school_subscriptions';resourceId=sub.id;clientReference=`subscription:${sub.id}`
     }else{
@@ -105,7 +105,7 @@ async function handler(req:VercelRequest,res:VercelResponse){
     if(update.error)throw update.error
 
     return json(res,200,{wave_launch_url:wave.wave_launch_url,checkout_id:wave.id,reference:clientReference})
-  }catch(error:any){return json(res,500,{error:error?.message||'Impossible de crÃ©er le paiement.'})}
+  }catch(error:any){return json(res,500,{error:error?.message||'Impossible de créer le paiement.'})}
 }
 
 export default withSecurity('/api/wave/checkout', handler)

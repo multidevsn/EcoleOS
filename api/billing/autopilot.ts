@@ -36,7 +36,7 @@ async function prepareWaveCheckout(admin:any, cycles:any[]) {
       prepared++
     } catch (e:any) {
       skipped++
-      await admin.from('autopilot_events').insert({ school_id: cycle.school_id, event_type: 'payment_checkout_prepare_failed', severity: 'warning', message: 'Le checkout Wave nâ€™a pas pu Ãªtre prÃ©parÃ© automatiquement.', metadata: { cycle_id: cycle.id, error: e?.message || 'unknown' } })
+      await admin.from('autopilot_events').insert({ school_id: cycle.school_id, event_type: 'payment_checkout_prepare_failed', severity: 'warning', message: 'Le checkout Wave n’a pas pu être préparé automatiquement.', metadata: { cycle_id: cycle.id, error: e?.message || 'unknown' } })
     }
   }
   return { prepared, skipped }
@@ -44,7 +44,7 @@ async function prepareWaveCheckout(admin:any, cycles:any[]) {
 
 async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST' && req.method !== 'GET') return json(res, 405, { error: 'Method not allowed' })
-  if (!env('SUPABASE_URL') || !env('SUPABASE_SECRET_KEY')) return json(res, 503, { error: 'Supabase serveur non configurÃ©.' })
+  if (!env('SUPABASE_URL') || !env('SUPABASE_SECRET_KEY')) return json(res, 503, { error: 'Supabase serveur non configuré.' })
 
   const auth = String(req.headers.authorization || '')
   const cronOk = !!env('CRON_SECRET') && auth === `Bearer ${env('CRON_SECRET')}`
