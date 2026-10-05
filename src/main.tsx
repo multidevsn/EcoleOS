@@ -1,4 +1,4 @@
-import React, {useEffect, useMemo, useRef, useState} from 'react'
+﻿import React, {useEffect, useMemo, useRef, useState} from 'react'
 import {Mode, fr, shortMoney, frToday, shortDate, Empty, KpiStrip, MiniBar, Card} from './shared'
 import {Panel, OrdersTable} from './ui'
 import {createRoot} from 'react-dom/client'
@@ -26,8 +26,7 @@ import {Analytics} from '@vercel/analytics/react'
 import {SpeedInsights} from '@vercel/speed-insights/react'
 import {applyOwnerParam,isOwnerDevice,setOwnerDevice,skipOwnerVisits} from './lib/ownerTraffic'
 import {BookOpen, CalendarDays, CheckCircle2, ChevronRight, CircleDollarSign, ClipboardList, Clock3, Gift, GraduationCap, KeyRound, Landmark, LogOut, Mail, Menu, Package, Save, School, ShieldCheck, ShoppingCart, FileUp, UserPlus, RefreshCw, Check, AlertTriangle, Sparkles, Star, UserRound, Users, UtensilsCrossed, WalletCards, X, Lightbulb, MessageSquarePlus, ThumbsUp, BarChart3, Palette, ListChecks, Gauge, Activity, ServerCog, MessageCircle, Megaphone, Send, Flag, ShieldAlert, Search, Info, UsersRound, LockKeyhole} from 'lucide-react'
-import '@fontsource-variable/bricolage-grotesque/wght.css'
-import '@fontsource/caveat/600.css'
+import './fonts.css'
 import './styles.css'
 
 type Role='student'|'parent'|'teacher'|'admin'|'director'|'cafeteria'
@@ -53,12 +52,12 @@ type SchoolInfo={id:string;name:string;city:string;director_id:string}
 type SubscriptionInfo={id:string;plan:'simple'|'extra';status:string;billing_price_xof:number;current_period_end?:string|null}
 type ReferralInfo={code:string;status?:string}
 
-type AppData={profile:Profile|null;studentId:string|null;school:SchoolInfo|null;subscription:SubscriptionInfo|null;referral:ReferralInfo|null;grades:Grade[];schedule:ScheduleRow[];payments:Payment[];points:PointEvent[];foodItems:FoodItem[];orders:Order[];rewards:Reward[];loading:boolean;error:string|null}
+type AppData={profile:Profile|null;studentId:string|null;school:SchoolInfo|null;subscription:SubscriptionInfo|null;referral:ReferralInfo|null;grades:Grade[];schedule:ScheduleRow[];payments:Payment[];points:PointEvent[];foodItems:FoodItem[];orders:Order[];rewards:Reward[];loading:boolean;homeDataLoading?:boolean;homePending?:string[];error:string|null}
 
-const roleLabels:Record<Role,string>={student:'Élève',parent:'Parent',teacher:'Professeur',admin:'Administration',director:'Directeur',cafeteria:'Cantine'}
+const roleLabels:Record<Role,string>={student:'Ã‰lÃ¨ve',parent:'Parent',teacher:'Professeur',admin:'Administration',director:'Directeur',cafeteria:'Cantine'}
 const isRole=(value:unknown):value is Role=>typeof value==='string' && Object.prototype.hasOwnProperty.call(roleLabels,value)
-const roleLabel=(value:unknown)=>isRole(value)?roleLabels[value]:String(value??'—')
-const nav:[Tab,string,React.ElementType][]=[['home','Accueil',School],['food','Food',ShoppingCart],['schedule','Emploi du temps',CalendarDays],['grades','Notes',GraduationCap],['payments','Paiements',WalletCards],['rewards','Récompenses',Gift],['members','Membres',Users],['agora','Agora',Lightbulb],['community','Communauté',MessageCircle],['pilotage','Pilotage',BarChart3],['ops','Ops',ServerCog],['account','Mon compte',UserRound]]
+const roleLabel=(value:unknown)=>isRole(value)?roleLabels[value]:String(value??'â€”')
+const nav:[Tab,string,React.ElementType][]=[['home','Accueil',School],['food','Food',ShoppingCart],['schedule','Emploi du temps',CalendarDays],['grades','Notes',GraduationCap],['payments','Paiements',WalletCards],['rewards','RÃ©compenses',Gift],['members','Membres',Users],['agora','Agora',Lightbulb],['community','CommunautÃ©',MessageCircle],['pilotage','Pilotage',BarChart3],['ops','Ops',ServerCog],['account','Mon compte',UserRound]]
 const roleTabs:Record<Role,Tab[]>={student:['home','food','schedule','grades','payments','rewards','agora','community','account'],parent:['home','food','schedule','grades','payments','rewards','agora','community','account'],teacher:['home','schedule','grades','rewards','agora','community','account'],admin:['home','food','schedule','grades','payments','members','rewards','agora','community','account'],director:['home','payments','members','rewards','agora','community','pilotage','account'],cafeteria:['home','food','rewards','agora','community','account']}
 const canAccess=(role:Role,tab:Tab)=>roleTabs[role].includes(tab)
 const primaryTabs:Record<Role,Tab[]>={
@@ -69,7 +68,7 @@ const primaryTabs:Record<Role,Tab[]>={
   director:['home','community','pilotage','payments'],
   cafeteria:['home','food','community'],
 }
-const navContextLabel:Record<Tab,string>={home:'Votre journée',food:'Services du quotidien',schedule:'Votre planning',grades:'Scolarité',payments:'Finances',rewards:'Points & avantages',members:'Équipe & membres',agora:'Évolution d’École OS',community:'Espaces de confiance',pilotage:'Pilotage établissement',ops:'Système & coûts',account:'Préférences'}
+const navContextLabel:Record<Tab,string>={home:'Votre journÃ©e',food:'Services du quotidien',schedule:'Votre planning',grades:'ScolaritÃ©',payments:'Finances',rewards:'Points & avantages',members:'Ã‰quipe & membres',agora:'Ã‰volution dâ€™Ã‰cole OS',community:'Espaces de confiance',pilotage:'Pilotage Ã©tablissement',ops:'SystÃ¨me & coÃ»ts',account:'PrÃ©fÃ©rences'}
 const foodCapabilities:Record<Role,{order:boolean;manageMenu:boolean}>={student:{order:true,manageMenu:false},parent:{order:true,manageMenu:false},teacher:{order:false,manageMenu:false},admin:{order:false,manageMenu:true},director:{order:false,manageMenu:false},cafeteria:{order:false,manageMenu:true}}
 
 
@@ -89,7 +88,7 @@ function startOfToday(){const d=new Date();d.setHours(0,0,0,0);return d}
 function isoDate(d:Date){return d.toISOString().slice(0,10)}
 function nextClass(schedule:ScheduleRow[]){const now=new Date();const day=((now.getDay()+6)%7)+1;const today=schedule.filter(s=>s.weekday===day).sort((a,b)=>a.starts_at.localeCompare(b.starts_at));const time=now.toTimeString().slice(0,5);return today.find(s=>s.ends_at>=time)||today[0]||null}
 function firstLetters(name:string){return name.split(/\s+/).filter(Boolean).slice(0,2).map(x=>x[0]).join('').toUpperCase()||'EO'}
-function mention(avg:number){return avg>=16?'Excellent !':avg>=14?'Très bien':avg>=12?'Bien':avg>=10?'Assez bien':'Peut mieux faire'}
+function mention(avg:number){return avg>=16?'Excellent !':avg>=14?'TrÃ¨s bien':avg>=12?'Bien':avg>=10?'Assez bien':'Peut mieux faire'}
 
 
 type CommunityIdeaSuggestion={intent:'idea';confidence:number;title:string;description:string;fingerprint:string}
@@ -98,22 +97,22 @@ function detectCommunityIntent(text:string):CommunityIdeaSuggestion|null{
   const normalized=text.trim().replace(/\s+/g,' ')
   if(normalized.length<20)return null
   const lower=normalized.toLowerCase()
-  if(/^(j'ai ajouté|je viens d'ajouter|a été ajouté|j’ai ajouté|je viens d’ajouter)/i.test(normalized))return null
+  if(/^(j'ai ajoutÃ©|je viens d'ajouter|a Ã©tÃ© ajoutÃ©|jâ€™ai ajoutÃ©|je viens dâ€™ajouter)/i.test(normalized))return null
   const ideaPatterns=[
-    /\bil faudrait\b/,/\bon devrait\b/,/\bon pourrait\b/,/\bce serait (?:bien|utile|possible)\b/,/\bça serait (?:bien|utile|possible)\b/,/\bserait[- ]il possible\b/,/\bpourrait[- ]on\b/,/\bj['’]aimerais (?:qu|que)\b/,/\bje (?:propose|suggère)\b/,/\b(proposition|suggestion|idée)\b/,/\baméliorer(?:ait|er)?\s+(?:la|le|les|une|un|notre|nos)\b/,/\bajouter(?:ait|er)?\s+(?:la|le|les|une|un|des|du|de|à)\b/,/\bpermettre(?:ait)?\s+(?:de|au|aux|à)\b/,/\bmodifier(?:ait|er)?\s+(?:la|le|les|une|un|des|ce|cette)\b/,/\bretirer(?:ait|er)?\s+(?:la|le|les|une|un|des)\b/,/\bmanque(?:nt)?\s+(?:une|un|de|des)\b/
+    /\bil faudrait\b/,/\bon devrait\b/,/\bon pourrait\b/,/\bce serait (?:bien|utile|possible)\b/,/\bÃ§a serait (?:bien|utile|possible)\b/,/\bserait[- ]il possible\b/,/\bpourrait[- ]on\b/,/\bj['â€™]aimerais (?:qu|que)\b/,/\bje (?:propose|suggÃ¨re)\b/,/\b(proposition|suggestion|idÃ©e)\b/,/\bamÃ©liorer(?:ait|er)?\s+(?:la|le|les|une|un|notre|nos)\b/,/\bajouter(?:ait|er)?\s+(?:la|le|les|une|un|des|du|de|Ã )\b/,/\bpermettre(?:ait)?\s+(?:de|au|aux|Ã )\b/,/\bmodifier(?:ait|er)?\s+(?:la|le|les|une|un|des|ce|cette)\b/,/\bretirer(?:ait|er)?\s+(?:la|le|les|une|un|des)\b/,/\bmanque(?:nt)?\s+(?:une|un|de|des)\b/
   ]
-  const questionOnly=/^(pourquoi|comment|quand|où|qui|est[- ]ce que)\b/i.test(normalized) && !ideaPatterns.some((r)=>r.test(lower))
+  const questionOnly=/^(pourquoi|comment|quand|oÃ¹|qui|est[- ]ce que)\b/i.test(normalized) && !ideaPatterns.some((r)=>r.test(lower))
   if(questionOnly)return null
   const hits=ideaPatterns.reduce((n,r)=>n+(r.test(lower)?1:0),0)
   if(hits===0)return null
   const confidence=Math.min(0.98,0.66+(Math.min(hits,3)-1)*0.1+(normalized.length>55?0.04:0))
-  const cleaned=normalized.replace(/^(idée|suggestion|proposition|je propose|je suggère)\s*[:,-]?\s*/i,'')
+  const cleaned=normalized.replace(/^(idÃ©e|suggestion|proposition|je propose|je suggÃ¨re)\s*[:,-]?\s*/i,'')
   const first=(cleaned.split(/[.!?\n]/)[0]||cleaned).trim()
-  const title=(first.length>84?first.slice(0,81).trimEnd()+'…':first) || 'Amélioration proposée'
+  const title=(first.length>84?first.slice(0,81).trimEnd()+'â€¦':first) || 'AmÃ©lioration proposÃ©e'
   return {intent:'idea',confidence,title,description:normalized,fingerprint:lower.slice(0,220)}
 }
-const orderLabels:Record<string,string>={pending:'En attente',paid:'Payée',preparing:'En préparation',ready:'Prête',completed:'Retirée',cancelled:'Annulée'}
-const demoBlurb:Record<Role,string>={student:'Cours, notes, Food, points',parent:'Suivi de votre enfant',teacher:'Planning et carnet de notes',admin:'Paiements, Food, notes',director:'Abonnement de l’école',cafeteria:'Menu et commandes'}
+const orderLabels:Record<string,string>={pending:'En attente',paid:'PayÃ©e',preparing:'En prÃ©paration',ready:'PrÃªte',completed:'RetirÃ©e',cancelled:'AnnulÃ©e'}
+const demoBlurb:Record<Role,string>={student:'Cours, notes, Food, points',parent:'Suivi de votre enfant',teacher:'Planning et carnet de notes',admin:'Paiements, Food, notes',director:'Abonnement de lâ€™Ã©cole',cafeteria:'Menu et commandes'}
 const demoIcons:Record<Role,React.ElementType>={student:GraduationCap,parent:Users,teacher:BookOpen,admin:ClipboardList,director:Landmark,cafeteria:UtensilsCrossed}
 const readDemoRole=():Role|null=>{try{const r=sessionStorage.getItem('ecole-os-demo-role') as Role|null;return r&&r in roleLabels?r:null}catch{return null}}
 
@@ -127,13 +126,13 @@ const demoCredentials:Record<Role,{email:string;password:string}>= {
 }
 
 function LogoMark({size=38}:{size?:number}){return <svg className="logo-mark-svg" width={size} height={size} viewBox="0 0 38 38" aria-hidden="true"><rect x="4.5" y="4.5" width="29" height="29" rx="8" fill="none" stroke="currentColor" strokeWidth="2.2"/><path d="M12 13.5h14M12 19h9M12 24.5h14" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round"/><circle cx="27" cy="19" r="2.15" fill="currentColor"/><path d="M25.2 9.3h3.7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>}
-function Brand({sub}:{sub?:string}){return <div className="brand"><div className="brand-mark" aria-hidden="true"><LogoMark/></div><div><b>École OS</b>{sub&&<span>{sub}</span>}</div></div>}
+function Brand({sub}:{sub?:string}){return <div className="brand"><div className="brand-mark" aria-hidden="true"><LogoMark/></div><div><b>Ã‰cole OS</b>{sub&&<span>{sub}</span>}</div></div>}
 
-// Un chunk chargé à la demande (React.lazy, ex. l’onglet Ops) peut avoir un nom qui change à chaque
-// déploiement. Si le navigateur a gardé une ancienne page en mémoire au moment du clic, il peut tenter de
-// charger un fichier qui n’existe plus sur le serveur : ce n’est pas une vraie erreur d’application, juste
-// une version obsolète. On la détecte par son message caractéristique et on recharge une seule fois pour
-// récupérer la dernière version, avant d’afficher l’écran d’erreur.
+// Un chunk chargÃ© Ã  la demande (React.lazy, ex. lâ€™onglet Ops) peut avoir un nom qui change Ã  chaque
+// dÃ©ploiement. Si le navigateur a gardÃ© une ancienne page en mÃ©moire au moment du clic, il peut tenter de
+// charger un fichier qui nâ€™existe plus sur le serveur : ce nâ€™est pas une vraie erreur dâ€™application, juste
+// une version obsolÃ¨te. On la dÃ©tecte par son message caractÃ©ristique et on recharge une seule fois pour
+// rÃ©cupÃ©rer la derniÃ¨re version, avant dâ€™afficher lâ€™Ã©cran dâ€™erreur.
 function isStaleChunkError(error:Error){
   return /Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed/i.test(error?.message||'')
 }
@@ -146,17 +145,17 @@ class ErrorBoundary extends React.Component<{children:React.ReactNode},{error:Er
       let alreadyTried=false
       try{alreadyTried=sessionStorage.getItem(STALE_RELOAD_KEY)==='1'}catch{/* stockage indisponible */}
       if(!alreadyTried){
-        try{sessionStorage.setItem(STALE_RELOAD_KEY,'1')}catch{/* pas grave, on tente quand même */}
+        try{sessionStorage.setItem(STALE_RELOAD_KEY,'1')}catch{/* pas grave, on tente quand mÃªme */}
         window.location.reload()
-        return {error:null} // le rechargement est en cours : pas la peine d’afficher l’écran d’erreur
+        return {error:null} // le rechargement est en cours : pas la peine dâ€™afficher lâ€™Ã©cran dâ€™erreur
       }
     }
     return {error}
   }
-  componentDidCatch(error:Error,info:React.ErrorInfo){console.error('École OS — erreur d’affichage',error,info.componentStack)}
+  componentDidCatch(error:Error,info:React.ErrorInfo){console.error('Ã‰cole OS â€” erreur dâ€™affichage',error,info.componentStack)}
   render(){
     if(!this.state.error)return this.props.children
-    return <main className="crash"><div className="auth-card"><Brand/><h1>Une erreur est survenue</h1><p className="muted">Cet écran n’a pas pu s’afficher. Rechargez la page, ou revenez à la connexion.</p><pre>{this.state.error.message}</pre><div className="actions"><button className="primary" onClick={()=>location.reload()}>Recharger la page</button><button className="outline" onClick={()=>{try{sessionStorage.removeItem('ecole-os-demo-role')}catch{}location.href='/'}}>Retour à la connexion</button></div></div></main>
+    return <main className="crash"><div className="auth-card"><Brand/><h1>Une erreur est survenue</h1><p className="muted">Cet Ã©cran nâ€™a pas pu sâ€™afficher. Rechargez la page, ou revenez Ã  la connexion.</p><pre>{this.state.error.message}</pre><div className="actions"><button className="primary" onClick={()=>location.reload()}>Recharger la page</button><button className="outline" onClick={()=>{try{sessionStorage.removeItem('ecole-os-demo-role')}catch{}location.href='/'}}>Retour Ã  la connexion</button></div></div></main>
   }
 }
 
@@ -170,7 +169,7 @@ function Login({onSchool,onDemo}:{onSchool:()=>void,onDemo:(r:Role)=>void}){
     e.preventDefault()
     setLoading(true)
     setError('')
-    // Les identifiants de démonstration ouvrent l’espace démo : aucun compte Auth n’est nécessaire.
+    // Les identifiants de dÃ©monstration ouvrent lâ€™espace dÃ©mo : aucun compte Auth nâ€™est nÃ©cessaire.
     const demoRole=(Object.keys(demoCredentials) as Role[]).find(r=>demoCredentials[r].email===email.trim().toLowerCase()&&demoCredentials[r].password===password)
     if(demoRole){setLoading(false);onDemo(demoRole);return}
 
@@ -192,10 +191,10 @@ function Login({onSchool,onDemo}:{onSchool:()=>void,onDemo:(r:Role)=>void}){
           body:JSON.stringify(pending.school)
         })
         const result=await res.json()
-        if(!res.ok) throw new Error(result.error||'Impossible de finaliser l’inscription de l’école.')
+        if(!res.ok) throw new Error(result.error||'Impossible de finaliser lâ€™inscription de lâ€™Ã©cole.')
         localStorage.removeItem('ecole-os-pending-school')
       }catch(e:any){
-        setError(e?.message||'Le compte est connecté mais l’inscription de l’école reste à finaliser.')
+        setError(e?.message||'Le compte est connectÃ© mais lâ€™inscription de lâ€™Ã©cole reste Ã  finaliser.')
       }
     }
     setLoading(false)
@@ -203,37 +202,37 @@ function Login({onSchool,onDemo}:{onSchool:()=>void,onDemo:(r:Role)=>void}){
 
   return <main className="os-login">
     <header className="os-login-top">
-      <Brand sub="système scolaire"/>
+      <Brand sub="systÃ¨me scolaire"/>
       <div className="os-top-status">
-        <span><i className="os-status-dot"/>SYSTÈME EN SERVICE</span>
-        <b>ACCÈS · 01</b>
+        <span><i className="os-status-dot"/>SYSTÃˆME EN SERVICE</span>
+        <b>ACCÃˆS Â· 01</b>
       </div>
     </header>
 
     <div className="os-login-frame">
       <section className="os-command">
         <div className="os-kicker">
-          <span><i className="os-status-dot"/>ÉCOLE OS / SYSTÈME SCOLAIRE</span>
+          <span><i className="os-status-dot"/>Ã‰COLE OS / SYSTÃˆME SCOLAIRE</span>
           <span className="os-kicker-code">DOSSIER 01</span>
         </div>
 
         <div className="os-title-row">
           <div className="os-title-copy">
             <div className="os-hand-note">Cahier de vie scolaire</div>
-            <h1>Le quotidien de l’école,<br/><em>réuni.</em></h1>
-            <p>Cours, notes, cantine, frais et vie scolaire sont regroupés dans un même système. Chaque personne ouvre directement son propre espace.</p>
+            <h1>Le quotidien de lâ€™Ã©cole,<br/><em>rÃ©uni.</em></h1>
+            <p>Cours, notes, cantine, frais et vie scolaire sont regroupÃ©s dans un mÃªme systÃ¨me. Chaque personne ouvre directement son propre espace.</p>
           </div>
-          <div className="os-system-mark" aria-label="École OS, six espaces">
+          <div className="os-system-mark" aria-label="Ã‰cole OS, six espaces">
             <span>6 ESPACES</span>
-            <b>1 système</b>
-            <small>Une seule porte d’entrée.</small>
+            <b>1 systÃ¨me</b>
+            <small>Une seule porte dâ€™entrÃ©e.</small>
           </div>
         </div>
 
-        <div className="os-map" aria-label="Espaces de démonstration">
+        <div className="os-map" aria-label="Espaces de dÃ©monstration">
           <div className="os-map-center">
             <div className="os-core-mark"><LogoMark size={46}/></div>
-            <span>ÉCOLE OS</span>
+            <span>Ã‰COLE OS</span>
             <small>noyau scolaire</small>
           </div>
           <div className="os-map-line os-map-line-a"/>
@@ -259,83 +258,114 @@ function Login({onSchool,onDemo}:{onSchool:()=>void,onDemo:(r:Role)=>void}){
           <i>AUTH / 01</i>
         </div>
         <h2>Bienvenue.</h2>
-        <p className="os-access-sub">Votre rôle est déterminé par votre compte établissement.</p>
+        <p className="os-access-sub">Votre rÃ´le est dÃ©terminÃ© par votre compte Ã©tablissement.</p>
 
         <form onSubmit={submit}>
           <label>Email<input type="email" required autoComplete="username" value={email} onChange={e=>setEmail(e.target.value)} placeholder="vous@ecole.sn"/></label>
           <label>Mot de passe<input type="password" required autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)}/></label>
           {error&&<div className="alert error" role="alert">{error}</div>}
-          <button className="primary full os-login-submit" disabled={loading}>{loading?'Ouverture…':'Ouvrir mon espace'}<ChevronRight size={18}/></button>
+          <button className="primary full os-login-submit" disabled={loading}>{loading?'Ouvertureâ€¦':'Ouvrir mon espace'}<ChevronRight size={18}/></button>
         </form>
 
         <div className="os-demo-intro">
-          <span>APERÇU</span>
-          <p>Ouvrir un espace de démonstration sans compte</p>
+          <span>APERÃ‡U</span>
+          <p>Ouvrir un espace de dÃ©monstration sans compte</p>
         </div>
 
-        <button type="button" className="school-signup os-school-signup" onClick={onSchool}><School size={18}/>Inscrire mon école<ChevronRight size={16}/></button>
-        <p className="demo-note">La démo utilise des données fictives, en lecture seule. Pour un compte réel, le rôle provient de votre profil établissement.</p>
+        <button type="button" className="school-signup os-school-signup" onClick={onSchool}><School size={18}/>Inscrire mon Ã©cole<ChevronRight size={16}/></button>
+        <p className="demo-note">La dÃ©mo utilise des donnÃ©es fictives, en lecture seule. Pour un compte rÃ©el, le rÃ´le provient de votre profil Ã©tablissement.</p>
       </section>
     </div>
 
     <footer className="os-login-footer">
-      <span>ÉCOLE OS · SYSTÈME D’EXPLOITATION SCOLAIRE</span>
+      <span>Ã‰COLE OS Â· SYSTÃˆME Dâ€™EXPLOITATION SCOLAIRE</span>
       <span>PAIEMENTS PAR WAVE</span>
     </footer>
   </main>
 }
 
-async function fetchLiveData(userId:string):Promise<AppData>{
+async function fetchLiveData(userId:string,onProgress?:(update:Partial<AppData>)=>void):Promise<AppData>{
   const supabase=await loadSupabase()
   const empty:AppData={profile:null,studentId:null,school:null,subscription:null,referral:null,grades:[],schedule:[],payments:[],points:[],foodItems:[],orders:[],rewards:[],loading:false,error:null}
+  let partial:AppData=empty
+  let settled=false
+  const publish=(update:Partial<AppData>)=>{
+    partial={...partial,...update}
+    onProgress?.(update)
+  }
   try{
-    // Bootstrap léger : on ne charge que ce dont l'accueil a besoin. Les écrans
-    // lourds (Notes / Planning / Paiements / Food / Récompenses) complètent à l'ouverture.
+    // Bootstrap lÃ©ger : on ne charge que ce dont l'accueil a besoin. Les Ã©crans
+    // lourds (Notes / Planning / Paiements / Food / RÃ©compenses) complÃ¨tent Ã  l'ouverture.
+    performance.mark('eos:profile-query:start')
     const {data:profileRow,error:profileError}=await supabase
       .from('profiles')
-      .select('id,full_name,role,student_code,school_id')
+      .select('id,full_name,role,student_code,school_id,class_members(class_id,classes(name)),parent_students!parent_students_parent_id_fkey(student_id,profiles!parent_students_student_id_fkey(class_members(class_id,classes(name))))')
       .eq('id',userId)
       .single()
+    performance.mark('eos:profile-query:end')
+    performance.measure('eos:profile-query','eos:profile-query:start','eos:profile-query:end')
     if(profileError)throw profileError
 
     const effectiveRole=profileRow.role as Role
     let studentId:string|null=effectiveRole==='student'?userId:null
+    let memberships:any[]=effectiveRole==='student'?(profileRow as any).class_members||[]:[]
     if(effectiveRole==='parent'){
-      const {data:links,error}=await supabase.from('parent_students').select('student_id').eq('parent_id',userId).limit(1)
-      if(error)throw error
-      studentId=links?.[0]?.student_id||null
+      const parentLink=(profileRow as any).parent_students?.[0]
+      studentId=parentLink?.student_id||null
+      memberships=parentLink?.profiles?.class_members||[]
     }
 
     let className:string|null=null
-    let classIds:string[]=[]
-    if(studentId){
-      const {data:members,error}=await supabase
-        .from('class_members')
-        .select('class_id,classes(name)')
-        .eq('student_id',studentId)
-      if(error)throw error
-      classIds=(members||[]).map((m:any)=>String(m.class_id)).filter(Boolean)
-      className=(members?.[0] as any)?.classes?.name||null
-    }
+    const classIds=(memberships||[]).map((m:any)=>String(m.class_id)).filter(Boolean)
+    className=(memberships?.[0] as any)?.classes?.name||null
 
     const todayNo=((new Date().getDay()+6)%7)+1
     const todayDate=isoDate(new Date())
     const wantsGrades=['student','parent','teacher'].includes(effectiveRole)
     const wantsSchedule=['student','parent','teacher','admin'].includes(effectiveRole)
     const wantsPayments=['student','parent','admin'].includes(effectiveRole)
-    const wantsOrders=['student','parent','admin','cafeteria'].includes(effectiveRole)
+    const wantsOrders=['parent','admin','cafeteria'].includes(effectiveRole)
     const wantsPoints=effectiveRole==='student'
     const isDirector=effectiveRole==='director'
+    const pendingSections=[
+      ...(wantsGrades?['grades']:[]),...(wantsSchedule?['schedule']:[]),
+      ...(wantsPayments?['payments']:[]),...(wantsPoints?['points']:[]),
+      ...(wantsOrders?['orders']:[]),...(isDirector&&profileRow.school_id?['school','subscription','referral']:[]),
+    ]
+    // Affiche l'accueil dès le profil prêt, puis complète chaque carte à son arrivée.
+    publish({
+      profile:{id:profileRow.id,full_name:profileRow.full_name,role:effectiveRole,email:'',school_id:profileRow.school_id,student_code:profileRow.student_code,class_name:className},
+      studentId,school:null,subscription:null,referral:null,grades:[],schedule:[],payments:[],
+      points:[],foodItems:[],orders:[],rewards:[],loading:false,homePending:pendingSections,
+      homeDataLoading:pendingSections.length>0,error:null,
+    })
 
+    const mapGrades=(rows:any[]):Grade[]=>rows.map((g:any)=>({
+      id:g.id,subject:g.subjects?.name||'Matière',value:Number(g.value),
+      coefficient:Number(g.subjects?.coefficient||1),term:g.term,
+    }))
+    const mapSchedule=(rows:any[]):ScheduleRow[]=>rows.map((x:any)=>({
+      id:x.id,weekday:Number(x.weekday),starts_at:x.starts_at,ends_at:x.ends_at,
+      subject:x.subjects?.name||'Cours',room:x.room,class_name:x.classes?.name||className||'Classe',
+    }))
+    const track=(section:string,request:any,apply:(result:any)=>Partial<AppData>)=>Promise.resolve(request).then((result:any)=>{
+      if(result?.error)throw result.error
+      if(!settled){
+        const homePending=(partial.homePending||[]).filter(item=>item!==section)
+        publish({...apply(result),homePending,homeDataLoading:homePending.length>0})
+      }
+      return result
+    })
+    performance.mark('eos:home-queries:start')
     const [gradesRes,scheduleRes,paymentsRes,pointsRes,ordersRes,schoolRes,subRes,refRes]=await Promise.all([
-      wantsGrades
+      track('grades',wantsGrades
         ? (studentId
             ? supabase.from('grades').select('id,subject_id,value,term,created_at,subjects(name,coefficient)').eq('student_id',studentId).order('created_at',{ascending:false}).limit(500)
             : effectiveRole==='teacher'
               ? supabase.from('grades').select('id,subject_id,value,term,created_at,subjects(name,coefficient)').order('created_at',{ascending:false}).limit(10)
               : Promise.resolve({data:[],error:null} as any))
-        : Promise.resolve({data:[],error:null} as any),
-      wantsSchedule
+        : Promise.resolve({data:[],error:null} as any),r=>({grades:mapGrades(r.data||[])})),
+      track('schedule',wantsSchedule
         ? (effectiveRole==='teacher'
             ? supabase.from('schedule').select('id,weekday,starts_at,ends_at,room,teacher_id,class_id,subject_id,subjects(name),classes(name)').eq('teacher_id',userId).eq('weekday',todayNo).order('starts_at').limit(20)
             : studentId && classIds.length
@@ -343,56 +373,45 @@ async function fetchLiveData(userId:string):Promise<AppData>{
               : effectiveRole==='admin'
                 ? supabase.from('schedule').select('id,weekday,starts_at,ends_at,room,teacher_id,class_id,subject_id,subjects(name),classes(name)').eq('weekday',todayNo).order('starts_at').limit(30)
                 : Promise.resolve({data:[],error:null} as any))
-        : Promise.resolve({data:[],error:null} as any),
-      wantsPayments
+        : Promise.resolve({data:[],error:null} as any),r=>({schedule:mapSchedule(r.data||[])})),
+      track('payments',wantsPayments
         ? (studentId
             ? supabase.from('school_payments').select('id,description,amount_xof,status,due_date').eq('user_id',studentId).eq('status','pending').order('due_date',{ascending:false}).limit(50)
             : effectiveRole==='admin'
               ? supabase.from('school_payments').select('id,description,amount_xof,status,due_date').eq('status','pending').order('due_date',{ascending:false}).limit(20)
               : Promise.resolve({data:[],error:null} as any))
-        : Promise.resolve({data:[],error:null} as any),
-      wantsPoints
+        : Promise.resolve({data:[],error:null} as any),r=>({payments:(r.data||[]) as Payment[]})),
+      track('points',wantsPoints
         ? supabase.from('point_ledger').select('id,points,reason,created_at').eq('user_id',userId).order('created_at',{ascending:false}).limit(50)
-        : Promise.resolve({data:[],error:null} as any),
-      wantsOrders
+        : Promise.resolve({data:[],error:null} as any),r=>({points:(r.data||[]) as PointEvent[]})),
+      track('orders',wantsOrders
         ? (effectiveRole==='admin'||effectiveRole==='cafeteria'
             ? supabase.from('food_orders').select('id,total_xof,status,pickup_date,pickup_slot,created_at').eq('pickup_date',todayDate).order('created_at',{ascending:false}).limit(40)
             : supabase.from('food_orders').select('id,total_xof,status,pickup_date,pickup_slot,created_at').eq('user_id',userId).eq('pickup_date',todayDate).order('created_at',{ascending:false}).limit(20))
-        : Promise.resolve({data:[],error:null} as any),
-      isDirector && profileRow.school_id
+        : Promise.resolve({data:[],error:null} as any),r=>({orders:(r.data||[]) as Order[]})),
+      track('school',isDirector && profileRow.school_id
         ? supabase.from('schools').select('id,name,city,director_id').eq('id',profileRow.school_id).maybeSingle()
-        : Promise.resolve({data:null,error:null} as any),
-      isDirector && profileRow.school_id
-        ? supabase.from('school_subscriptions').select('id,plan,status,billing_price_xof,current_period_end').eq('school_id',profileRow.school_id).order('created_at',{ascending:false}).limit(1).maybeSingle()
-        : Promise.resolve({data:null,error:null} as any),
-      isDirector && profileRow.school_id
+        : Promise.resolve({data:null,error:null} as any),r=>({school:(r.data||null) as SchoolInfo|null})),
+      track('subscription',isDirector && profileRow.school_id
+        ? supabase.from('school_subscriptions').select('id,plan,status,billing_price_xof,current_period_end,billing_provider,paddle_customer_id,paddle_subscription_id').eq('school_id',profileRow.school_id).order('created_at',{ascending:false}).limit(1).maybeSingle()
+        : Promise.resolve({data:null,error:null} as any),r=>({subscription:(r.data||null) as SubscriptionInfo|null})),
+      track('referral',isDirector && profileRow.school_id
         ? supabase.from('referral_codes').select('code').eq('owner_id',userId).maybeSingle()
-        : Promise.resolve({data:null,error:null} as any),
+        : Promise.resolve({data:null,error:null} as any),r=>({referral:(r.data||null) as ReferralInfo|null})),
     ])
+    performance.mark('eos:home-queries:end')
+    performance.measure('eos:home-queries','eos:home-queries:start','eos:home-queries:end')
 
     for(const result of [gradesRes,scheduleRes,paymentsRes,pointsRes,ordersRes,schoolRes,subRes,refRes]){
       if(result?.error)throw result.error
     }
 
-    const grades:Grade[]=(gradesRes.data||[]).map((g:any)=>({
-      id:g.id,
-      subject:g.subjects?.name||'Matière',
-      value:Number(g.value),
-      coefficient:Number(g.subjects?.coefficient||1),
-      term:g.term,
-    }))
-    const schedule:ScheduleRow[]=(scheduleRes.data||[]).map((x:any)=>({
-      id:x.id,
-      weekday:Number(x.weekday),
-      starts_at:x.starts_at,
-      ends_at:x.ends_at,
-      subject:x.subjects?.name||'Cours',
-      room:x.room,
-      class_name:x.classes?.name||className||'Classe',
-    }))
+    const grades=mapGrades(gradesRes.data||[])
+    const schedule=mapSchedule(scheduleRes.data||[])
 
-    // Anti-surprise UX : l'accueil travaille volontairement avec un aperçu.
-    // Les onglets détaillés rechargent leur historique complet à l'ouverture.
+    // Anti-surprise UX : l'accueil travaille volontairement avec un aperÃ§u.
+    // Les onglets dÃ©taillÃ©s rechargent leur historique complet Ã  l'ouverture.
+    settled=true
     return {
       profile:{id:profileRow.id,full_name:profileRow.full_name,role:effectiveRole,email:'',school_id:profileRow.school_id,student_code:profileRow.student_code,class_name:className},
       studentId,
@@ -407,9 +426,16 @@ async function fetchLiveData(userId:string):Promise<AppData>{
       orders:(ordersRes.data||[]) as Order[],
       rewards:[],
       loading:false,
+      homeDataLoading:false,
+      homePending:[],
       error:null,
     }
-  }catch(e:any){return {...empty,error:e?.message||'Impossible de charger les données.'}}
+  }catch(e:any){
+    settled=true
+    const failed={...partial,loading:false,homeDataLoading:false,homePending:[],error:e?.message||'Impossible de charger les donnÃ©es.'}
+    onProgress?.({loading:false,homeDataLoading:false,homePending:[],error:failed.error})
+    return failed
+  }
 }
 async function fetchDemoData(role:Role):Promise<AppData>{
   const supabase=await loadSupabase()
@@ -461,7 +487,7 @@ async function fetchDemoData(role:Role):Promise<AppData>{
       rewards:[],
       loading:false,error:null
     }
-  }catch(e:any){return {profile:null,studentId:null,school:null,subscription:null,referral:null,grades:[],schedule:[],payments:[],points:[],foodItems:[],orders:[],rewards:[],loading:false,error:e?.message||'Les données de démo sont indisponibles.'}}
+  }catch(e:any){return {profile:null,studentId:null,school:null,subscription:null,referral:null,grades:[],schedule:[],payments:[],points:[],foodItems:[],orders:[],rewards:[],loading:false,error:e?.message||'Les donnÃ©es de dÃ©mo sont indisponibles.'}}
 }
 
 function SchoolOnboarding({onBack}:{onBack:()=>void}){
@@ -477,19 +503,21 @@ function SchoolOnboarding({onBack}:{onBack:()=>void}){
     if(error){setBusy(false);setMsg(error.message);return}
     if(!data.session){
       localStorage.setItem('ecole-os-pending-school',JSON.stringify({email:director.email,school}))
-      setBusy(false);setMsg('Compte créé. Vérifiez votre email puis connectez-vous : l’inscription de l’école sera finalisée automatiquement.');return
+      setBusy(false);setMsg('Compte crÃ©Ã©. VÃ©rifiez votre email puis connectez-vous : lâ€™inscription de lâ€™Ã©cole sera finalisÃ©e automatiquement.');return
     }
     const res=await fetch('/api/onboarding/school',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${data.session.access_token}`},body:JSON.stringify(school)})
     const result=await res.json();setBusy(false)
-    if(!res.ok){setMsg(result.error||'Impossible de créer l’école.');return}
+    if(!res.ok){setMsg(result.error||'Impossible de crÃ©er lâ€™Ã©cole.');return}
     localStorage.removeItem('ecole-os-pending-school')
-    setMsg(`École créée : ${result.school_name}. Abonnement ${result.plan} préparé. Code parrainage : ${result.referral_code}`)
+    setMsg(result.replayed
+      ? `Votre école est déjà configurée : ${result.school_name}. Code de parrainage : ${result.referral_code}`
+      : `École créée : ${result.school_name}. Abonnement ${result.plan} préparé. Code de parrainage : ${result.referral_code}`)
   }
   return <main className="auth"><div className="auth-card wide-card">
-    <Brand sub="Créer l’espace de votre établissement"/>
-    <div className="onboarding-head"><div><h1>Votre école, votre espace</h1><p className="muted">Un directeur crée son établissement, choisit un plan puis invite son équipe.</p></div><div className="stepper"><span className={step===1?'active':''}>1. Compte</span><span className={step===2?'active':''}>2. École & plan</span></div></div>
-    {step===1?<form onSubmit={e=>{e.preventDefault();if(!director.name||!director.email||director.password.length<6)return setMsg('Renseignez les champs et utilisez un mot de passe d’au moins 6 caractères.');setMsg('');setStep(2)}}><label>Nom du directeur<input required value={director.name} onChange={e=>setDirector({...director,name:e.target.value})} placeholder="Awa Ndiaye"/></label><label>Email<input required type="email" value={director.email} onChange={e=>setDirector({...director,email:e.target.value})} placeholder="direction@ecole.sn"/></label><label>Mot de passe<input required type="password" minLength={6} value={director.password} onChange={e=>setDirector({...director,password:e.target.value})}/></label>{msg&&<div className="alert error">{msg}</div>}<button className="primary full">Continuer</button><button type="button" className="link-btn" onClick={onBack}>← Retour connexion</button></form>:
-    <form onSubmit={submit}><label>Nom de l’école<input required value={school.name} onChange={e=>setSchool({...school,name:e.target.value})} placeholder="Lycée Horizon Dakar"/></label><label>Ville<input required value={school.city} onChange={e=>setSchool({...school,city:e.target.value})} placeholder="Dakar"/></label><div className="plan-picker"><button type="button" className={school.plan==='simple'?'selected':''} onClick={()=>setSchool({...school,plan:'simple'})}><b>Simple</b><strong>5 000 F / mois</strong><small>Fonctionnalités essentielles · annonces internes</small></button><button type="button" className={school.plan==='extra'?'selected':''} onClick={()=>setSchool({...school,plan:'extra'})}><b>Extra</b><strong>10 000 F / mois</strong><small>Modules avancés · sans pubs · automatisations</small></button></div><label>Code de parrainage (optionnel)<input value={school.referral} onChange={e=>setSchool({...school,referral:e.target.value.trim().toUpperCase()})} placeholder="EO-AB12CD"/></label><div className="referral-note">Parrainage : lorsqu’un autre directeur inscrit son école avec votre code et règle son premier abonnement, votre établissement peut bénéficier du plan Extra au prix du plan Simple selon les conditions du programme.</div>{msg&&<div className="alert">{msg}</div>}<button className="primary full" disabled={busy}>{busy?'Création…':'Créer mon école'}</button><button type="button" className="link-btn" onClick={()=>{setStep(1);setMsg('')}}>← Modifier le compte</button></form>}
+    <Brand sub="CrÃ©er lâ€™espace de votre Ã©tablissement"/>
+    <div className="onboarding-head"><div><h1>Votre Ã©cole, votre espace</h1><p className="muted">Un directeur crÃ©e son Ã©tablissement, choisit un plan puis invite son Ã©quipe.</p></div><div className="stepper"><span className={step===1?'active':''}>1. Compte</span><span className={step===2?'active':''}>2. Ã‰cole & plan</span></div></div>
+    {step===1?<form onSubmit={e=>{e.preventDefault();if(!director.name||!director.email||director.password.length<6)return setMsg('Renseignez les champs et utilisez un mot de passe dâ€™au moins 6 caractÃ¨res.');setMsg('');setStep(2)}}><label>Nom du directeur<input required value={director.name} onChange={e=>setDirector({...director,name:e.target.value})} placeholder="Awa Ndiaye"/></label><label>Email<input required type="email" value={director.email} onChange={e=>setDirector({...director,email:e.target.value})} placeholder="direction@ecole.sn"/></label><label>Mot de passe<input required type="password" minLength={6} value={director.password} onChange={e=>setDirector({...director,password:e.target.value})}/></label>{msg&&<div className="alert error">{msg}</div>}<button className="primary full">Continuer</button><button type="button" className="link-btn" onClick={onBack}>â† Retour connexion</button></form>:
+    <form onSubmit={submit}><label>Nom de lâ€™Ã©cole<input required value={school.name} onChange={e=>setSchool({...school,name:e.target.value})} placeholder="LycÃ©e Horizon Dakar"/></label><label>Ville<input required value={school.city} onChange={e=>setSchool({...school,city:e.target.value})} placeholder="Dakar"/></label><div className="plan-picker"><button type="button" className={school.plan==='simple'?'selected':''} onClick={()=>setSchool({...school,plan:'simple'})}><b>Simple</b><strong>5 000 F / mois</strong><small>FonctionnalitÃ©s essentielles Â· annonces internes</small></button><button type="button" className={school.plan==='extra'?'selected':''} onClick={()=>setSchool({...school,plan:'extra'})}><b>Extra</b><strong>10 000 F / mois</strong><small>Modules avancÃ©s Â· sans pubs Â· automatisations</small></button></div><label>Code de parrainage (optionnel)<input value={school.referral} onChange={e=>setSchool({...school,referral:e.target.value.trim().toUpperCase()})} placeholder="EO-AB12CD"/></label><div className="referral-note">Parrainage : lorsquâ€™un autre directeur inscrit son Ã©cole avec votre code et rÃ¨gle son premier abonnement, votre Ã©tablissement peut bÃ©nÃ©ficier du plan Extra au prix du plan Simple selon les conditions du programme.</div>{msg&&<div className="alert">{msg}</div>}<button className="primary full" disabled={busy}>{busy?'CrÃ©ationâ€¦':'CrÃ©er mon Ã©cole'}</button><button type="button" className="link-btn" onClick={()=>{setStep(1);setMsg('')}}>â† Modifier le compte</button></form>}
   </div></main>
 }
 
@@ -521,13 +549,16 @@ function App(){
     }
     ;(async()=>{
       try{
+        performance.mark('eos:auth-bootstrap:start')
         const supabase=await loadSupabase()
         const {data:{session:dataSession}}=await supabase.auth.getSession()
+        performance.mark('eos:auth-bootstrap:end')
+        performance.measure('eos:auth-bootstrap','eos:auth-bootstrap:start','eos:auth-bootstrap:end')
         const {data:{subscription}}=supabase.auth.onAuthStateChange((_e:any,s:any)=>{if(alive)setSession(s)})
         unsubscribe=()=>subscription.unsubscribe()
         if(alive)setSession(dataSession)
       }catch(error){
-        console.error('École OS — initialisation Auth impossible',error)
+        console.error('Ã‰cole OS â€” initialisation Auth impossible',error)
         if(alive)setSession(null)
       }
     })()
@@ -546,9 +577,9 @@ function App(){
       setPlatformAdmin(false)
       return()=>{alive=false}
     }
-    // Le contrôle serveur de /api/admin/[action] reste la vraie barrière de sécurité.
-    // Côté client, on évite toutefois d'appeler le très lourd /api/admin/tech à chaque connexion :
-    // la liste d'emails de plateforme n'est pas un secret et ne sert qu'à afficher/masquer le menu Ops.
+    // Le contrÃ´le serveur de /api/admin/[action] reste la vraie barriÃ¨re de sÃ©curitÃ©.
+    // CÃ´tÃ© client, on Ã©vite toutefois d'appeler le trÃ¨s lourd /api/admin/tech Ã  chaque connexion :
+    // la liste d'emails de plateforme n'est pas un secret et ne sert qu'Ã  afficher/masquer le menu Ops.
     const configured=String(import.meta.env.VITE_PLATFORM_ADMIN_EMAILS||'')
       .split(',')
       .map((x:string)=>x.trim().toLowerCase())
@@ -569,11 +600,28 @@ function App(){
       setData(d=>({...d,loading:true,error:null}))
       if(mode==='live'&&!session){setData(d=>({...d,loading:false}));return}
       performance.mark('eos:data-load:start')
-      const next=mode==='demo'?await fetchDemoData(role):await fetchLiveData(session.user.id)
+      let liveRole:Role|null=null
+      const next=mode==='demo'
+        ?await fetchDemoData(role)
+        :await fetchLiveData(session.user.id,(update)=>{
+            if(!alive)return
+            if(update.profile?.role)liveRole=update.profile.role
+            if(update.grades&&(liveRole==='student'||liveRole==='parent'))hydratedTabs.current.add('grades')
+            setData(current=>({...current,...update}))
+            if(update.profile?.role)setRole(update.profile.role)
+            if(update.profile){
+              performance.mark('eos:home-shell:ready')
+              performance.measure('eos:home-shell','eos:data-load:start','eos:home-shell:ready')
+            }
+          })
       performance.mark('eos:data-load:end')
       performance.measure('eos:data-load','eos:data-load:start','eos:data-load:end')
       if(alive){
         setData(next)
+        // Les élèves et parents ont déjà leurs 500 notes les plus récentes
+        // dans le bootstrap (l'accueil calcule sa moyenne dessus). Réutiliser
+        // cette tranche dans l'onglet Notes évite une seconde requête identique.
+        if(mode==='live'&&(next.profile?.role==='student'||next.profile?.role==='parent'))hydratedTabs.current.add('grades')
         if(mode==='live'&&next.profile?.role)setRole(next.profile.role)
       }
     }
@@ -581,16 +629,16 @@ function App(){
     return()=>{alive=false}
   },[mode,session?.user?.id])
 
-  // ⚠ Tous les hooks doivent être appelés AVANT le moindre `return` : sinon React plante
-  // (« Rendered more hooks than during the previous render ») dès que la session change → page blanche.
+  // âš  Tous les hooks doivent Ãªtre appelÃ©s AVANT le moindre `return` : sinon React plante
+  // (Â« Rendered more hooks than during the previous render Â») dÃ¨s que la session change â†’ page blanche.
   useEffect(()=>{if(!canAccess(role,tab) && !(tab==='ops'&&platformAdmin))setTab('home')},[role,tab,platformAdmin])
   useEffect(()=>{
     if(!session?.user?.id&&mode==='live')return
     const needsFood=tab==='food'&&!hydratedTabs.current.has('food')
     const needsRewards=tab==='rewards'&&!hydratedTabs.current.has('rewards')
-    const needsGrades=tab==='grades'&&!hydratedTabs.current.has('grades')
-    const needsSchedule=tab==='schedule'&&!hydratedTabs.current.has('schedule')
-    const needsPayments=tab==='payments'&&!hydratedTabs.current.has('payments')
+    const needsGrades=tab==='grades'&&!hydratedTabs.current.has('grades')&&!data.homePending?.includes('grades')
+    const needsSchedule=tab==='schedule'&&!hydratedTabs.current.has('schedule')&&!data.homePending?.includes('schedule')
+    const needsPayments=tab==='payments'&&!hydratedTabs.current.has('payments')&&!data.homePending?.includes('payments')
     if(!needsFood&&!needsRewards&&!needsGrades&&!needsSchedule&&!needsPayments)return
     const key=(needsFood?'food':needsRewards?'rewards':needsGrades?'grades':needsSchedule?'schedule':'payments') as 'food'|'rewards'|'grades'|'schedule'|'payments'
     hydratedTabs.current.add(key)
@@ -643,7 +691,7 @@ function App(){
             else if(role==='admin') gradesRes=await supabase.from('grades').select('id,subject_id,value,term,created_at,subjects(name,coefficient)').order('created_at',{ascending:false}).limit(500)
             else gradesRes={data:[],error:null}
             if(gradesRes.error)throw gradesRes.error
-            const grades=(gradesRes.data||[]).map((g:any)=>({id:g.id,subject:g.subjects?.name||'Matière',value:Number(g.value),coefficient:Number(g.subjects?.coefficient||1),term:g.term})) as Grade[]
+            const grades=(gradesRes.data||[]).map((g:any)=>({id:g.id,subject:g.subjects?.name||'MatiÃ¨re',value:Number(g.value),coefficient:Number(g.subjects?.coefficient||1),term:g.term})) as Grade[]
             if(alive)setData(d=>({...d,grades}))
           }
         }else if(needsSchedule){
@@ -685,7 +733,7 @@ function App(){
       }
     })()
     return()=>{alive=false}
-  },[mode,tab,session?.user?.id,role,data.profile?.role,data.studentId])
+  },[mode,tab,session?.user?.id,role,data.profile?.role,data.studentId,data.homePending])
   function enterDemo(r:Role){try{sessionStorage.setItem('ecole-os-demo-role',r)}catch{}setCart({});setOrderMsg('');setTab('home');setRole(r);setMode('demo')}
   if(schoolSignup)return <SchoolOnboarding onBack={()=>setSchoolSignup(false)}/>
   if(mode==='live'&&!session)return <Login onSchool={()=>setSchoolSignup(true)} onDemo={enterDemo}/>
@@ -698,10 +746,10 @@ function App(){
   async function checkout(){
     const items=Object.entries(cart).filter(([,q])=>q).map(([id,quantity])=>({id,quantity}))
     if(!items.length)return
-    if(mode==='demo'){setOrderMsg('Mode démo : commande enregistrée localement pour la simulation.');return}
-    setOrderMsg('Création du paiement Wave…')
+    if(mode==='demo'){setOrderMsg('Mode dÃ©mo : commande enregistrÃ©e localement pour la simulation.');return}
+    setOrderMsg('CrÃ©ation du paiement Waveâ€¦')
     const token=session?.access_token
-    const res=await fetch('/api/wave/checkout',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({type:'food',items,pickup_date:isoDate(new Date()),pickup_slot:'12:30–12:40'})})
+    const res=await fetch('/api/wave/checkout',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({type:'food',items,pickup_date:isoDate(new Date()),pickup_slot:'12:30â€“12:40'})})
     const result=await res.json()
     if(!res.ok){setOrderMsg(result.error||'Erreur de paiement');return}
     window.location.href=result.wave_launch_url
@@ -711,9 +759,9 @@ function App(){
     <div className={'scrim'+(menuOpen?' on':'')} onClick={()=>setMenuOpen(false)}/>
     <aside className={'sidebar'+(menuOpen?' open':'')}>
       <Brand/>
-      <div className="role-chip"><small>{roleLabels[role]}{data.profile?.class_name?` · ${data.profile.class_name}`:''}</small><b>{profileName}</b></div>
-      {mode==='live'&&<div className="session-badge"><span className="session-dot"/>Session sécurisée</div>}
-      {mode==='demo'&&<div className="demo-mode"><span>Mode démo</span>Données fictives, lecture seule.<button onClick={()=>switchMode('live')}>Quitter la démo</button></div>}
+      <div className="role-chip"><small>{roleLabels[role]}{data.profile?.class_name?` Â· ${data.profile.class_name}`:''}</small><b>{profileName}</b></div>
+      {mode==='live'&&<div className="session-badge"><span className="session-dot"/>Session sÃ©curisÃ©e</div>}
+      {mode==='demo'&&<div className="demo-mode"><span>Mode dÃ©mo</span>DonnÃ©es fictives, lecture seule.<button onClick={()=>switchMode('live')}>Quitter la dÃ©mo</button></div>}
       <nav aria-label="Navigation principale">
         {primaryItems.map(([id,label,Icon])=><button key={id} className={tab===id?'active':''} aria-current={tab===id?'page':undefined} title={navContextLabel[id]} onClick={()=>{setTab(id);setMenuOpen(false)}}><Icon size={19}/><span>{label}</span>{id==='food'&&count>0&&<em>{String(count)}</em>}</button>)}
         {secondaryItems.length>0&&<div className="nav-more-group"><button className="nav-more" aria-expanded={moreOpen} onClick={()=>setMoreOpen(v=>!v)}><ListChecks size={19}/><span>Evolution</span><ChevronRight size={15} className={moreOpen?'turn':''}/></button>
@@ -721,7 +769,7 @@ function App(){
         </div>}
         {availableNav.some(([id])=>id==='account')&&<button key="account" className={tab==='account'?'active':''} aria-current={tab==='account'?'page':undefined} title={navContextLabel.account} onClick={()=>{setTab('account');setMenuOpen(false)}}><UserRound size={19}/><span>Mon compte</span></button>}
       </nav>
-      <button className="logout" onClick={mode==='demo'?()=>switchMode('live'):logout}><LogOut size={18}/>{mode==='demo'?'Quitter la démo':'Se déconnecter'}</button>
+      <button className="logout" onClick={mode==='demo'?()=>switchMode('live'):logout}><LogOut size={18}/>{mode==='demo'?'Quitter la dÃ©mo':'Se dÃ©connecter'}</button>
     </aside>
     <section className="main">
       <header className="topbar"><button className="mobile-menu" aria-label="Ouvrir le menu" onClick={()=>setMenuOpen(v=>!v)}>{menuOpen?<X/>:<Menu/>}</button><h2>{nav.find(n=>n[0]===tab)?.[1]}</h2><time className="today">{frToday()}</time><div className="avatar" aria-hidden="true">{firstLetters(profileName)}</div></header>
@@ -755,44 +803,45 @@ function Home({role,mode,name,data,setTab}:{role:Role,mode:Mode,name:string,data
   const today=data.schedule.filter(s=>s.weekday===todayNo).sort((a,b)=>a.starts_at.localeCompare(b.starts_at)).slice(0,5)
   const upcoming=nextClass(data.schedule)
   const todayOrders=data.orders.filter(o=>o.pickup_date===isoDate(new Date()))
+  const pending=(section:string)=>Boolean(data.homePending?.includes(section))
 
   if(role==='student') return <>
-    <div className="hero"><span className="eyebrow">Espace élève · {data.profile?.class_name||'classe à renseigner'}</span><h1>Bonjour {name}</h1><p>{mode==='demo'?'Vous explorez l’espace élève avec des données fictives.':'Voici votre journée et l’essentiel de votre scolarité.'}</p></div>
-    <div className="grid stats"><Card icon={<Clock3/>} tone="hl" title="Prochain cours" value={upcoming?.starts_at?.slice(0,5)||'—'} meta={upcoming?`${upcoming.subject} · ${upcoming.room}`:'Aucun cours'}/><Card icon={<GraduationCap/>} tone="red" title="Moyenne générale" value={`${fr(average,2,2)} / 20`} meta="Moyenne pondérée"/><Card icon={<Star/>} title="Points" value={new Intl.NumberFormat('fr-FR').format(points)} meta="Solde récompenses"/><Card icon={<CircleDollarSign/>} title="À payer" value={shortMoney(due)} meta={due?'Échéances en attente':'Tout est réglé'}/></div>
-    <div className="grid two"><Panel title="Ma journée" action="Tout voir" onAction={()=>setTab('schedule')}>{today.length?today.map(x=><div className="row" key={x.id}><b>{x.starts_at.slice(0,5)}</b><span>{x.subject}</span><small>{x.room}</small></div>):<Empty text="Pas de cours aujourd'hui"/>}</Panel><Panel title="Accès rapides"><div className="quick"><button onClick={()=>setTab('food')}><ShoppingCart/>Précommander Food</button><button onClick={()=>setTab('grades')}><GraduationCap/>Voir mes notes</button><button onClick={()=>setTab('payments')}><WalletCards/>Payer une mensualité</button><button onClick={()=>setTab('rewards')}><Gift/>Mes récompenses</button></div></Panel></div>
+    <div className="hero"><span className="eyebrow">Espace Ã©lÃ¨ve Â· {data.profile?.class_name||'classe Ã  renseigner'}</span><h1>Bonjour {name}</h1><p>{mode==='demo'?'Vous explorez lâ€™espace Ã©lÃ¨ve avec des donnÃ©es fictives.':'Voici votre journÃ©e et lâ€™essentiel de votre scolaritÃ©.'}</p></div>
+    <div className="grid stats"><Card icon={<Clock3/>} tone="hl" title="Prochain cours" value={pending('schedule')?'…':upcoming?.starts_at?.slice(0,5)||'â€”'} meta={pending('schedule')?'Chargement…':upcoming?`${upcoming.subject} Â· ${upcoming.room}`:'Aucun cours'}/><Card icon={<GraduationCap/>} tone="red" title="Moyenne gÃ©nÃ©rale" value={pending('grades')?'…':`${fr(average,2,2)} / 20`} meta={pending('grades')?'Chargement…':'Moyenne pondÃ©rÃ©e'}/><Card icon={<Star/>} title="Points" value={pending('points')?'…':new Intl.NumberFormat('fr-FR').format(points)} meta={pending('points')?'Chargement…':'Solde rÃ©compenses'}/><Card icon={<CircleDollarSign/>} title="Ã€ payer" value={pending('payments')?'…':shortMoney(due)} meta={pending('payments')?'Chargement…':due?'Ã‰chÃ©ances en attente':'Tout est rÃ©glÃ©'}/></div>
+    <div className="grid two"><Panel title="Ma journÃ©e" action="Tout voir" onAction={()=>setTab('schedule')}>{today.length?today.map(x=><div className="row" key={x.id}><b>{x.starts_at.slice(0,5)}</b><span>{x.subject}</span><small>{x.room}</small></div>):<Empty text="Pas de cours aujourd'hui"/>}</Panel><Panel title="AccÃ¨s rapides"><div className="quick"><button onClick={()=>setTab('food')}><ShoppingCart/>PrÃ©commander Food</button><button onClick={()=>setTab('grades')}><GraduationCap/>Voir mes notes</button><button onClick={()=>setTab('payments')}><WalletCards/>Payer une mensualitÃ©</button><button onClick={()=>setTab('rewards')}><Gift/>Mes rÃ©compenses</button></div></Panel></div>
   </>
 
   if(role==='parent') return <>
-    <div className="hero"><span className="eyebrow">Espace parent · suivi de la famille</span><h1>Bonjour {name}</h1><p>Suivez la scolarité de <b>{data.profile?.child_name||'votre enfant'}</b> depuis un seul espace.</p></div>
-    <div className="grid stats"><Card icon={<GraduationCap/>} tone="red" title="Moyenne de l'enfant" value={`${fr(average,2,2)} / 20`} meta="Bulletin actuel"/><Card icon={<CircleDollarSign/>} title="Échéances" value={shortMoney(due)} meta={due?'À régler':'À jour'}/><Card icon={<CalendarDays/>} title="Cours aujourd'hui" value={String(today.length)} meta="Planning de l'enfant"/><Card icon={<ShoppingCart/>} title="Commandes Food" value={String(todayOrders.length)} meta="Aujourd'hui"/></div>
-    <div className="grid two"><Panel title="Dernières notes">{data.grades.slice(0,5).map(g=><div className="row" key={g.id}><b>{g.value}/20</b><span>{g.subject}</span><small>Coef. {g.coefficient}</small></div>)}</Panel><Panel title="Suivi rapide"><div className="quick"><button onClick={()=>setTab('grades')}><GraduationCap/>Bulletin</button><button onClick={()=>setTab('payments')}><WalletCards/>Frais scolaires</button><button onClick={()=>setTab('schedule')}><CalendarDays/>Emploi du temps</button><button onClick={()=>setTab('food')}><ShoppingCart/>Food</button></div></Panel></div>
+    <div className="hero"><span className="eyebrow">Espace parent Â· suivi de la famille</span><h1>Bonjour {name}</h1><p>Suivez la scolaritÃ© de <b>{data.profile?.child_name||'votre enfant'}</b> depuis un seul espace.</p></div>
+    <div className="grid stats"><Card icon={<GraduationCap/>} tone="red" title="Moyenne de l'enfant" value={pending('grades')?'…':`${fr(average,2,2)} / 20`} meta={pending('grades')?'Chargement…':'Bulletin actuel'}/><Card icon={<CircleDollarSign/>} title="Ã‰chÃ©ances" value={pending('payments')?'…':shortMoney(due)} meta={pending('payments')?'Chargement…':due?'Ã€ rÃ©gler':'Ã€ jour'}/><Card icon={<CalendarDays/>} title="Cours aujourd'hui" value={pending('schedule')?'…':String(today.length)} meta={pending('schedule')?'Chargement…':"Planning de l'enfant"}/><Card icon={<ShoppingCart/>} title="Commandes Food" value={pending('orders')?'…':String(todayOrders.length)} meta={pending('orders')?'Chargement…':"Aujourd'hui"}/></div>
+    <div className="grid two"><Panel title="DerniÃ¨res notes">{data.grades.length?data.grades.slice(0,5).map(g=><div className="row" key={g.id}><b>{g.value}/20</b><span>{g.subject}</span><small>Coef. {g.coefficient}</small></div>):<Empty text={pending('grades')?'Chargement…':'Aucune note'}/>}</Panel><Panel title="Suivi rapide"><div className="quick"><button onClick={()=>setTab('grades')}><GraduationCap/>Bulletin</button><button onClick={()=>setTab('payments')}><WalletCards/>Frais scolaires</button><button onClick={()=>setTab('schedule')}><CalendarDays/>Emploi du temps</button><button onClick={()=>setTab('food')}><ShoppingCart/>Food</button></div></Panel></div>
   </>
 
   if(role==='teacher') return <>
-    <div className="hero"><span className="eyebrow">Espace professeur</span><h1>Bonjour {name}</h1><p>Votre journée de cours, vos classes et votre carnet de notes.</p></div>
-    <div className="grid stats"><Card icon={<CalendarDays/>} title="Cours aujourd'hui" value={String(today.length)} meta="Votre planning"/><Card icon={<Clock3/>} tone="hl" title="Prochain cours" value={upcoming?.starts_at?.slice(0,5)||'—'} meta={upcoming?upcoming.subject:'Aucun cours'}/><Card icon={<School/>} title="Classes suivies" value={String(new Set(data.schedule.map(s=>s.class_name)).size)} meta="Planning"/><Card icon={<GraduationCap/>} title="Notes visibles" value={String(data.grades.length)} meta="Carnet de notes"/></div>
-    <div className="grid two"><Panel title="Mes cours du jour">{today.length?today.map(x=><div className="row" key={x.id}><b>{x.starts_at.slice(0,5)}</b><span>{x.subject}</span><small>{x.class_name} · {x.room}</small></div>):<Empty text="Pas de cours aujourd'hui"/>}</Panel><Panel title="Actions enseignant"><div className="quick"><button onClick={()=>setTab('grades')}><GraduationCap/>Saisir / consulter les notes</button><button onClick={()=>setTab('schedule')}><CalendarDays/>Planning</button></div></Panel></div>
+    <div className="hero"><span className="eyebrow">Espace professeur</span><h1>Bonjour {name}</h1><p>Votre journÃ©e de cours, vos classes et votre carnet de notes.</p></div>
+    <div className="grid stats"><Card icon={<CalendarDays/>} title="Cours aujourd'hui" value={pending('schedule')?'…':String(today.length)} meta={pending('schedule')?'Chargement…':'Votre planning'}/><Card icon={<Clock3/>} tone="hl" title="Prochain cours" value={pending('schedule')?'…':upcoming?.starts_at?.slice(0,5)||'â€”'} meta={pending('schedule')?'Chargement…':upcoming?upcoming.subject:'Aucun cours'}/><Card icon={<School/>} title="Classes suivies" value={pending('schedule')?'…':String(new Set(data.schedule.map(s=>s.class_name)).size)} meta="Planning"/><Card icon={<GraduationCap/>} title="Notes visibles" value={pending('grades')?'…':String(data.grades.length)} meta={pending('grades')?'Chargement…':'Carnet de notes'}/></div>
+    <div className="grid two"><Panel title="Mes cours du jour">{today.length?today.map(x=><div className="row" key={x.id}><b>{x.starts_at.slice(0,5)}</b><span>{x.subject}</span><small>{x.class_name} Â· {x.room}</small></div>):<Empty text="Pas de cours aujourd'hui"/>}</Panel><Panel title="Actions enseignant"><div className="quick"><button onClick={()=>setTab('grades')}><GraduationCap/>Saisir / consulter les notes</button><button onClick={()=>setTab('schedule')}><CalendarDays/>Planning</button></div></Panel></div>
   </>
 
   if(role==='admin') return <>
-    <div className="hero"><span className="eyebrow">Administration</span><h1>Bonjour {name}</h1><p>Une vue opérationnelle de l'activité de l'établissement.</p></div>
-    <div className="grid stats"><Card icon={<School/>} title="Élèves suivis" value={String(1)} meta="Établissement"/><Card icon={<WalletCards/>} title="Impayés" value={shortMoney(due)} meta="Montant en attente"/><Card icon={<ShoppingCart/>} title="Commandes aujourd'hui" value={String(todayOrders.length)} meta="Food"/><Card icon={<CalendarDays/>} title="Cours planifiés" value={String(data.schedule.length)} meta="Planning"/></div>
-    <div className="grid two"><Panel title="Alertes à traiter">{data.payments.filter(p=>p.status==='pending').slice(0,4).map(p=><div className="payment-row" key={p.id}><span>{p.description}</span><b>{money(p.amount_xof)}</b><small className="pending">À traiter</small></div>)}{!data.payments.filter(p=>p.status==='pending').length&&<Empty text="Aucune alerte paiement"/>}</Panel><Panel title="Commandes Food"><OrdersTable orders={data.orders.slice(0,6)}/></Panel></div>
+    <div className="hero"><span className="eyebrow">Administration</span><h1>Bonjour {name}</h1><p>Une vue opÃ©rationnelle de l'activitÃ© de l'Ã©tablissement.</p></div>
+    <div className="grid stats"><Card icon={<School/>} title="Ã‰lÃ¨ves suivis" value={String(1)} meta="Ã‰tablissement"/><Card icon={<WalletCards/>} title="ImpayÃ©s" value={pending('payments')?'…':shortMoney(due)} meta="Montant en attente"/><Card icon={<ShoppingCart/>} title="Commandes aujourd'hui" value={pending('orders')?'…':String(todayOrders.length)} meta="Food"/><Card icon={<CalendarDays/>} title="Cours planifiÃ©s" value={pending('schedule')?'…':String(data.schedule.length)} meta="Planning"/></div>
+    <div className="grid two"><Panel title="Alertes Ã  traiter">{data.payments.filter(p=>p.status==='pending').slice(0,4).map(p=><div className="payment-row" key={p.id}><span>{p.description}</span><b>{money(p.amount_xof)}</b><small className="pending">Ã€ traiter</small></div>)}{!data.payments.filter(p=>p.status==='pending').length&&<Empty text="Aucune alerte paiement"/>}</Panel><Panel title="Commandes Food"><OrdersTable orders={data.orders.slice(0,6)}/></Panel></div>
   </>
 
   if(role==='director') return <>
-    <div className="hero"><span className="eyebrow">Direction</span><h1>{data.school?.name||name}</h1><p>{data.school?.city||'Dakar'} · Gérez votre abonnement, votre école et votre programme de recommandation.</p></div>
-    <div className="grid stats"><Card icon={<CalendarDays/>} title="Prochaine échéance" value={data.subscription?.current_period_end?shortDate(data.subscription.current_period_end):'—'} meta="Renouvellement de l’abonnement"/><Card icon={<WalletCards/>} title="Plan" value={data.subscription?.plan==='extra'?'Extra':'Simple'} meta={data.subscription?.status==='active'?'Actif':'À activer'}/><Card icon={<CircleDollarSign/>} title="Tarif mensuel" value={shortMoney(Number(data.subscription?.billing_price_xof||0))} meta="Facturation école"/><Card icon={<Gift/>} title="Code parrainage" value={data.referral?.code||'—'} meta="Votre avantage"/></div>
-    <div className="grid two"><Panel title="Votre abonnement"><div className="plan-summary"><strong>{data.subscription?.plan==='extra'?'Extra':'Simple'}</strong><b>{shortMoney(Number(data.subscription?.billing_price_xof||0))} / mois</b><span>{data.subscription?.plan==='extra'?'Sans publicité · fonctions avancées':'Fonctions essentielles · publicité interne possible'}</span>{data.subscription?.current_period_end&&<small>Prochaine échéance : {new Intl.DateTimeFormat('fr-FR').format(new Date(data.subscription.current_period_end))}</small>}</div><button className="primary" onClick={()=>setTab('payments')}>Gérer mon abonnement</button></Panel><Panel title="Programme de recommandation"><div className="referral-banner"><b>{data.referral?.code||'—'}</b><span>Partagez ce code à un autre directeur. Une inscription qualifiée peut débloquer l'avantage Extra selon les conditions du programme.</span><button className="outline" onClick={()=>navigator.clipboard?.writeText(data.referral?.code||'')}>Copier</button></div></Panel></div>
+    <div className="hero"><span className="eyebrow">Direction</span><h1>{data.school?.name||name}</h1><p>{data.school?.city||'Dakar'} Â· GÃ©rez votre abonnement, votre Ã©cole et votre programme de recommandation.</p></div>
+    <div className="grid stats"><Card icon={<CalendarDays/>} title="Prochaine Ã©chÃ©ance" value={pending('subscription')?'…':data.subscription?.current_period_end?shortDate(data.subscription.current_period_end):'â€”'} meta="Renouvellement de lâ€™abonnement"/><Card icon={<WalletCards/>} title="Plan" value={pending('subscription')?'…':data.subscription?.plan==='extra'?'Extra':'Simple'} meta={pending('subscription')?'Chargement…':data.subscription?.status==='active'?'Actif':'Ã€ activer'}/><Card icon={<CircleDollarSign/>} title="Tarif mensuel" value={pending('subscription')?'…':shortMoney(Number(data.subscription?.billing_price_xof||0))} meta="Facturation Ã©cole"/><Card icon={<Gift/>} title="Code parrainage" value={pending('referral')?'…':data.referral?.code||'â€”'} meta="Votre avantage"/></div>
+    <div className="grid two"><Panel title="Votre abonnement"><div className="plan-summary"><strong>{data.subscription?.plan==='extra'?'Extra':'Simple'}</strong><b>{shortMoney(Number(data.subscription?.billing_price_xof||0))} / mois</b><span>{data.subscription?.plan==='extra'?'Sans publicitÃ© Â· fonctions avancÃ©es':'Fonctions essentielles Â· publicitÃ© interne possible'}</span>{data.subscription?.current_period_end&&<small>Prochaine Ã©chÃ©ance : {new Intl.DateTimeFormat('fr-FR').format(new Date(data.subscription.current_period_end))}</small>}</div><button className="primary" onClick={()=>setTab('payments')}>GÃ©rer mon abonnement</button></Panel><Panel title="Programme de recommandation"><div className="referral-banner"><b>{data.referral?.code||'â€”'}</b><span>Partagez ce code Ã  un autre directeur. Une inscription qualifiÃ©e peut dÃ©bloquer l'avantage Extra selon les conditions du programme.</span><button className="outline" onClick={()=>navigator.clipboard?.writeText(data.referral?.code||'')}>Copier</button></div></Panel></div>
   </>
 
   const ready=todayOrders.filter(o=>o.status==='ready').length
   const preparing=todayOrders.filter(o=>o.status==='preparing').length
   const revenue=todayOrders.filter(o=>o.status!=='cancelled').reduce((s,o)=>s+Number(o.total_xof),0)
   return <>
-    <div className="hero"><span className="eyebrow">Cantine</span><h1>Bonjour {name}</h1><p>Préparez les commandes et gardez le flux de retrait sous contrôle.</p></div>
-    <div className="grid stats"><Card icon={<Package/>} title="Commandes aujourd'hui" value={String(todayOrders.length)} meta="Tous créneaux"/><Card icon={<Clock3/>} title="En préparation" value={String(preparing)} meta="À cuisiner / assembler"/><Card icon={<Package/>} title="Prêtes" value={String(ready)} meta="À remettre"/><Card icon={<CircleDollarSign/>} title="Ventes" value={shortMoney(revenue)} meta="Aujourd'hui"/></div>
-    <div className="grid two"><Panel title="File de retrait"><OrdersTable orders={todayOrders.slice(0,8)}/></Panel><Panel title="Gestion rapide"><div className="quick"><button onClick={()=>setTab('food')}><ShoppingCart/>Gérer le menu</button><button onClick={()=>setTab('food')}><Package/>Voir toutes les commandes</button></div></Panel></div>
+    <div className="hero"><span className="eyebrow">Cantine</span><h1>Bonjour {name}</h1><p>PrÃ©parez les commandes et gardez le flux de retrait sous contrÃ´le.</p></div>
+    <div className="grid stats"><Card icon={<Package/>} title="Commandes aujourd'hui" value={pending('orders')?'…':String(todayOrders.length)} meta="Tous crÃ©neaux"/><Card icon={<Clock3/>} title="En prÃ©paration" value={pending('orders')?'…':String(preparing)} meta="Ã€ cuisiner / assembler"/><Card icon={<Package/>} title="PrÃªtes" value={pending('orders')?'…':String(ready)} meta="Ã€ remettre"/><Card icon={<CircleDollarSign/>} title="Ventes" value={pending('orders')?'…':shortMoney(revenue)} meta="Aujourd'hui"/></div>
+    <div className="grid two"><Panel title="File de retrait"><OrdersTable orders={todayOrders.slice(0,8)}/></Panel><Panel title="Gestion rapide"><div className="quick"><button onClick={()=>setTab('food')}><ShoppingCart/>GÃ©rer le menu</button><button onClick={()=>setTab('food')}><Package/>Voir toutes les commandes</button></div></Panel></div>
   </>
 }
 
@@ -800,13 +849,13 @@ function Home({role,mode,name,data,setTab}:{role:Role,mode:Mode,name:string,data
 applyOwnerParam()
 try{sessionStorage.removeItem(STALE_RELOAD_KEY)}catch{/* stockage indisponible */}
 
-// Enregistre le service worker et vérifie régulièrement les mises à jour. Sans cet appel explicite,
-// le worker s'enregistre passivement mais le rythme de vérification n'est pas maîtrisé : un déploiement
-// peut rester invisible longtemps pour un onglet resté ouvert, avec le risque observé ci-dessus (un chunk
-// chargé à la demande qui n'existe plus sur le serveur). registerType:'autoUpdate' fait déjà recharger la
-// page dès qu'une mise à jour est détectée ; ce sondage périodique déclenche la détection elle-même.
+// Enregistre le service worker et vÃ©rifie rÃ©guliÃ¨rement les mises Ã  jour. Sans cet appel explicite,
+// le worker s'enregistre passivement mais le rythme de vÃ©rification n'est pas maÃ®trisÃ© : un dÃ©ploiement
+// peut rester invisible longtemps pour un onglet restÃ© ouvert, avec le risque observÃ© ci-dessus (un chunk
+// chargÃ© Ã  la demande qui n'existe plus sur le serveur). registerType:'autoUpdate' fait dÃ©jÃ  recharger la
+// page dÃ¨s qu'une mise Ã  jour est dÃ©tectÃ©e ; ce sondage pÃ©riodique dÃ©clenche la dÃ©tection elle-mÃªme.
 import('virtual:pwa-register').then(({registerSW})=>{
-  const intervalMs=15*60*1000 // Une seule vérification périodique : pas de double fetch du service worker.
+  const intervalMs=15*60*1000 // Une seule vÃ©rification pÃ©riodique : pas de double fetch du service worker.
   registerSW({
     onRegisteredSW(_swUrl,registration){
       if(!registration)return
@@ -818,3 +867,5 @@ import('virtual:pwa-register').then(({registerSW})=>{
 }).catch(()=>{/* PWA indisponible (ex. hors production) : l'app fonctionne normalement sans elle */})
 
 createRoot(document.getElementById('root')!).render(<ErrorBoundary><App/><Analytics beforeSend={skipOwnerVisits}/><SpeedInsights beforeSend={skipOwnerVisits}/></ErrorBoundary>)
+
+

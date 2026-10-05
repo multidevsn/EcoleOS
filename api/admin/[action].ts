@@ -134,18 +134,16 @@ async function tech(req: VercelRequest, res: VercelResponse) {
     const email = String(userData.user.email || '').toLowerCase()
     if (!allowedEmails().includes(email)) return json(res, 403, { error: 'Accès réservé à l’administrateur technique.' })
 
-    const [{ count: schools }, { count: users }, { count: activeSubs }, subs, currentCycles, costRules, providerCosts, recentEvents, securitySummary] = await Promise.all([
+    const [{ count: schools }, { count: users }, { count: activeSubs }, currentCycles, costRules, providerCosts, recentEvents, securitySummary] = await Promise.all([
       admin.from('schools').select('id', { count: 'exact', head: true }),
       admin.from('profiles').select('id', { count: 'exact', head: true }),
       admin.from('school_subscriptions').select('id', { count: 'exact', head: true }).eq('status', 'active'),
-      admin.from('school_subscriptions').select('id,school_id,plan,billing_price_xof,status'),
       admin.from('billing_cycles').select('school_id,amount_xof,estimated_cost_xof,provider_cost_xof,cost_basis,margin_xof,active_users,status,period_start').eq('period_start', new Date().toISOString().slice(0, 8) + '01'),
       admin.from('platform_service_cost_rules').select('service,metric,label,fixed_monthly_xof,included_units,unit_cost_xof,active').eq('active', true).order('service'),
       admin.from('provider_cost_snapshots').select('provider,period_start,period_end,currency,amount,amount_xof,basis,status,units,error_message,fetched_at').eq('period_start', new Date().toISOString().slice(0, 8) + '01').order('provider'),
       admin.from('autopilot_events').select('id,school_id,event_type,severity,message,metadata,created_at').order('created_at', { ascending: false }).limit(12),
       admin.rpc('security_get_summary', { p_hours: 24 }),
     ])
-    if (subs.error) throw subs.error
     if (currentCycles.error) throw currentCycles.error
     if (costRules.error) throw costRules.error
     if (providerCosts.error) throw providerCosts.error
@@ -162,7 +160,6 @@ async function tech(req: VercelRequest, res: VercelResponse) {
       ok: true,
       admin_email: email,
       kpis: { schools: schools || 0, users: users || 0, active_subscriptions: activeSubs || 0, projected_revenue_xof: projectedRevenue, estimated_cost_xof: estimatedCost, actual_provider_cost_xof: actualProviderCost, projected_margin_xof: margin, avg_users_per_school: Math.round(avgUsers), past_due_cycles: pastDue },
-      subscriptions: subs.data || [],
       cycles: currentCycles.data || [],
       cost_rules: costRules.data || [],
       provider_costs: providerCosts.data || [],

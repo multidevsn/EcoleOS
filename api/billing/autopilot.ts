@@ -1,4 +1,4 @@
-import { env } from '../../server/env.js'
+﻿import { env } from '../../server/env.js'
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 
@@ -14,11 +14,15 @@ async function prepareWaveCheckout(admin:any, cycles:any[]) {
   for (const cycle of cycles) {
     if (cycle.provider_checkout_id) { skipped++; continue }
     try {
+      const {data:subscription,error:subscriptionError}=await admin.from('school_subscriptions').select('billing_provider,billing_price_xof').eq('school_id',cycle.school_id).order('created_at',{ascending:false}).limit(1).maybeSingle()
+      if(subscriptionError)throw subscriptionError
+      const amount=Math.max(0,Number(cycle.amount_xof)-(subscription?.billing_provider==='paddle'?Number(subscription.billing_price_xof||0):0))
+      if(amount<=0){skipped++;continue}
       const response = await fetch('https://api.wave.com/v1/checkout/sessions', {
         method: 'POST',
         headers: { Authorization: `Bearer ${env('WAVE_API_KEY')}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          amount: String(cycle.amount_xof),
+          amount: String(amount),
           currency: 'XOF',
           client_reference: `billing-cycle:${cycle.id}`,
           success_url: `${base}/?payment=success`,
@@ -32,7 +36,7 @@ async function prepareWaveCheckout(admin:any, cycles:any[]) {
       prepared++
     } catch (e:any) {
       skipped++
-      await admin.from('autopilot_events').insert({ school_id: cycle.school_id, event_type: 'payment_checkout_prepare_failed', severity: 'warning', message: 'Le checkout Wave n’a pas pu être préparé automatiquement.', metadata: { cycle_id: cycle.id, error: e?.message || 'unknown' } })
+      await admin.from('autopilot_events').insert({ school_id: cycle.school_id, event_type: 'payment_checkout_prepare_failed', severity: 'warning', message: 'Le checkout Wave nâ€™a pas pu Ãªtre prÃ©parÃ© automatiquement.', metadata: { cycle_id: cycle.id, error: e?.message || 'unknown' } })
     }
   }
   return { prepared, skipped }
@@ -40,7 +44,7 @@ async function prepareWaveCheckout(admin:any, cycles:any[]) {
 
 async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST' && req.method !== 'GET') return json(res, 405, { error: 'Method not allowed' })
-  if (!env('SUPABASE_URL') || !env('SUPABASE_SECRET_KEY')) return json(res, 503, { error: 'Supabase serveur non configuré.' })
+  if (!env('SUPABASE_URL') || !env('SUPABASE_SECRET_KEY')) return json(res, 503, { error: 'Supabase serveur non configurÃ©.' })
 
   const auth = String(req.headers.authorization || '')
   const cronOk = !!env('CRON_SECRET') && auth === `Bearer ${env('CRON_SECRET')}`
@@ -68,3 +72,4 @@ async function handler(req: VercelRequest, res: VercelResponse) {
 }
 
 export default withSecurity('/api/billing/autopilot', handler)
+

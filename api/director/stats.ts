@@ -16,12 +16,17 @@ async function handler(req: VercelRequest, res: VercelResponse) {
     if (userError || !userData.user) return json(res, 401, { error: 'Session invalide.' })
     const { data: profile, error: profileError } = await admin.from('profiles').select('id,role,school_id').eq('id', userData.user.id).single()
     if (profileError || !profile || profile.role !== 'director' || !profile.school_id) return json(res, 403, { error: 'Accès réservé à la direction.' })
-    const { data: stats, error } = await admin.from('v_director_autopilot_stats').select('*').eq('school_id', profile.school_id).single()
-    if (error) throw error
-    const { data: settings, error: settingsError } = await admin.from('school_billing_settings').select('*').eq('school_id', profile.school_id).maybeSingle()
-    if (settingsError) throw settingsError
-    const { data: events, error: eventsError } = await admin.from('autopilot_events').select('event_type,severity,message,created_at').eq('school_id', profile.school_id).order('created_at',{ascending:false}).limit(8)
-    if (eventsError) throw eventsError
+    const [statsResult, settingsResult, eventsResult] = await Promise.all([
+      admin.from('v_director_autopilot_stats').select('*').eq('school_id', profile.school_id).single(),
+      admin.from('school_billing_settings').select('*').eq('school_id', profile.school_id).maybeSingle(),
+      admin.from('autopilot_events').select('event_type,severity,message,created_at').eq('school_id', profile.school_id).order('created_at',{ascending:false}).limit(8),
+    ])
+    if (statsResult.error) throw statsResult.error
+    if (settingsResult.error) throw settingsResult.error
+    if (eventsResult.error) throw eventsResult.error
+    const stats = statsResult.data
+    const settings = settingsResult.data
+    const events = eventsResult.data
     return json(res, 200, { ok: true, stats, settings, events: events || [] })
   } catch (error: any) {
     return json(res, 500, { error: error?.message || 'Impossible de charger les statistiques.' })

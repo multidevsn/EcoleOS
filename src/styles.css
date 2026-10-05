@@ -850,6 +850,7 @@ input::placeholder{color:#8a93b3}
 .agora-tabs button:hover{background:var(--paper);color:var(--ink)}
 .agora-tabs button.active{background:var(--blue-soft);color:var(--blue-dark)}
 .agora-layout{display:grid;grid-template-columns:minmax(280px,.72fr) minmax(0,1.28fr);gap:18px;align-items:start}
+.agora-more{display:flex;justify-content:center;grid-column:1/-1}
 .agora-form{display:grid;gap:14px}
 .agora-form label{display:grid;gap:7px;font-size:13px;font-weight:600;color:var(--ink-2)}
 .agora-form input,.agora-form textarea{width:100%;border:1px solid var(--line);background:var(--paper);border-radius:10px;padding:11px 12px;resize:vertical;min-height:44px}

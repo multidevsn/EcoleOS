@@ -13,11 +13,9 @@
 - Correction des libellés internes `Impact` visibles en faveur de `Points` / `Récompenses`.
 - Le correctif Supabase pour `private.is_staff()` reste présent dans `20260927_security_hardening.sql`.
 
-## Limitation de vérification locale
+## Vérification locale (mise à jour 2026-10-04)
 
-`npm run build` n'a pas pu être validé dans l'environnement courant : l'installation des dépendances reste incomplète et TypeScript signale l'absence de `vite/client` et `vite-plugin-pwa/client`. Les fichiers TypeScript/TSX modifiés ont toutefois été contrôlés par transpilation syntaxique.
-
-Avant mise en production, exécuter un `npm ci` propre puis `npm run build` sur la machine/CI de déploiement et vérifier les logs Vercel.
+Le problème historique d'installation partielle est résolu. Après une installation propre, `npm run build` passe en local, avec vérification TypeScript du frontend et des API. Contrôler encore les journaux Vercel et les métriques réelles après déploiement en staging.
 
 ## Vercel — navigation et événements
 
@@ -55,3 +53,15 @@ Les 3 Cron Jobs actuels (`provider-costs`, `rollup`, `autopilot`) sont très en 
 - Food et Récompenses restent chargés à la demande.
 - Les historiques détaillés sont plafonnés à 500 lignes pour éviter les payloads massifs ; pour une très grande école, la prochaine étape est la pagination `range()`.
 - Ajout de `performance.mark/measure` autour du chargement de données (`eos:data-load`) pour mesurer le gain sur le déploiement réel.
+
+## Passe mesurée — 2026-10-04
+
+- L'onglet Notes des élèves/parents réutilise les 500 notes déjà chargées pour l'accueil au lieu de refaire la même requête.
+- Les statistiques indépendantes du tableau directeur sont chargées en parallèle après le contrôle d'accès.
+- Une conversation charge maintenant les 80 messages les plus récents, puis les remet dans l'ordre chronologique.
+- Les polices sont limitées aux sous-ensembles Latin/Latin-ext nécessaires au français. Le précache PWA est passé de 1 047,43 KiB à 780,73 KiB dans les deux compilations locales ; le CSS de 14,26 à 13,98 KiB gzip. Le JS d'entrée reste à 278,39 KiB (86,15 KiB gzip), et Supabase est dans un chunk distinct.
+- Vérification : `npm run build` passe, TypeScript frontend et API compris.
+- Limite : aucune mesure RUM/Lighthouse représentative n'est disponible ici ; vérifier LCP/INP/CLS et les temps Supabase sur staging avant d'optimiser davantage.
+- Agora charge maintenant les idées et sondages par pages de 40, avec tri stable et boutons de continuation ; le contrôle des votes ne cherche que les idées visibles. L'ajout d'une idée relit uniquement la ligne créée.
+- Le tableau technique ne lit plus l'historique complet `school_subscriptions`, qui n'était pas affiché. Il conserve les cycles du mois nécessaires aux KPI.
+- La répartition des réponses aux sondages lit encore toutes les réponses des sondages chargés. La vraie optimisation est une fonction SQL agrégée respectant RLS ; elle reste à faire avec la CLI Supabase disponible et une vérification contre le schéma réel.
