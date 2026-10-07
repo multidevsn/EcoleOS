@@ -138,93 +138,13 @@ async function syncSupabase(period: ReturnType<typeof monthBounds>): Promise<Pro
   }
 }
 
-function resendPlanConfig() {
-  const plan = String(env('RESEND_PLAN') || 'free').toLowerCase()
-  const table: Record<string, { monthly: number; included: number; overagePer1000: number }> = {
-    free: { monthly: 0, included: 3000, overagePer1000: 0 },
-    pro: { monthly: 20, included: 50000, overagePer1000: 0.90 },
-    scale: { monthly: 90, included: 100000, overagePer1000: 0.90 },
-  }
-  const config = table[plan] || table.free
-  return {
-    monthly: numberEnv('RESEND_MONTHLY_USD', config.monthly),
-    included: Math.max(0, Math.floor(numberEnv('RESEND_INCLUDED_EMAILS', config.included))),
-    overagePer1000: numberEnv('RESEND_OVERAGE_USD_PER_1000', config.overagePer1000),
-    plan,
-  }
-}
-
-async function syncResend(period: ReturnType<typeof monthBounds>): Promise<ProviderSnapshot> {
-  const token = env('RESEND_API_KEY')
-  if (!token) {
-    return { provider: 'resend', period_start: period.startDate, period_end: period.endDate, currency: 'USD', amount: 0, amount_xof: null, basis: 'usage_derived', status: 'not_configured', units: {}, breakdown: {}, error_message: 'RESEND_API_KEY requis.' }
-  }
-  try {
-    let after: string | undefined
-    let count = 0
-    let pages = 0
-    let safety = 0
-    let stop = false
-    while (!stop && safety < 1000) {
-      safety++
-      const url = new URL('https://api.resend.com/emails')
-      url.searchParams.set('limit', '100')
-      if (after) url.searchParams.set('after', after)
-      const body = await fetchJson(url.toString(), { headers: { Authorization: `Bearer ${token}` } })
-      const items = Array.isArray(body?.data) ? body.data : []
-      pages++
-      for (const email of items) {
-        const created = new Date(email?.created_at || 0)
-        if (created >= period.start && created <= period.end) count++
-        if (created < period.start) { stop = true; break }
-      }
-      if (stop || !body?.has_more || !items.length) break
-      after = items[items.length - 1]?.id
-      if (!after) break
-    }
-    const cfg = resendPlanConfig()
-    const overage = Math.max(0, count - cfg.included)
-    const amount = cfg.monthly + (overage / 1000) * cfg.overagePer1000
-    return {
-      provider: 'resend', period_start: period.startDate, period_end: period.endDate, currency: 'USD', amount,
-      amount_xof: normalizeXof(amount, 'USD'), basis: 'usage_derived', status: 'partial',
-      units: { sent_emails: count, pages_scanned: pages, plan: cfg.plan, included_emails: cfg.included, overage_emails: overage },
-      breakdown: { monthly_plan_usd: cfg.monthly, overage_usd_per_1000: cfg.overagePer1000 },
-      source_ref: 'resend-account', error_message: 'Resend expose les emails envoyés par API ; le coût est dérivé du plan configuré et des volumes réels. Les taxes/add-ons éventuels peuvent différer de la facture finale.',
-    }
-  } catch (error: any) {
-    return { provider: 'resend', period_start: period.startDate, period_end: period.endDate, currency: 'USD', amount: 0, amount_xof: null, basis: 'usage_derived', status: 'error', units: {}, breakdown: {}, source_ref: 'resend-account', error_message: error?.message || 'Resend API error' }
-  }
-}
-
-async function syncTwilio(period: ReturnType<typeof monthBounds>): Promise<ProviderSnapshot> {
-  const sid = env('TWILIO_ACCOUNT_SID')
-  const token = env('TWILIO_AUTH_TOKEN')
-  if (!sid || !token) {
-    return { provider: 'twilio', period_start: period.startDate, period_end: period.endDate, currency: 'USD', amount: 0, amount_xof: null, basis: 'provider_reported', status: 'not_configured', units: {}, breakdown: {}, error_message: 'TWILIO_ACCOUNT_SID et TWILIO_AUTH_TOKEN requis.' }
-  }
-  try {
-    const basic = btoa(`${sid}:${token}`)
-    const url = new URL(`https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(sid)}/Usage/Records.json`)
-    url.searchParams.set('StartDate', period.startDate)
-    url.searchParams.set('EndDate', period.endDate)
-    url.searchParams.set('Category', 'totalprice')
-    const body = await fetchJson(url.toString(), { headers: { Authorization: `Basic ${basic}` } })
-    const records = Array.isArray(body?.usage_records) ? body.usage_records : []
-    const amount = records.reduce((sum: number, row: any) => sum + Number(row?.price || 0), 0)
-    const currency = String(records[0]?.price_unit || 'USD').toUpperCase()
-    return {
-      provider: 'twilio', period_start: period.startDate, period_end: period.endDate, currency, amount,
-      amount_xof: normalizeXof(amount, currency), basis: 'provider_reported', status: 'ok',
-      units: { categories: records.length }, breakdown: { records }, source_ref: sid,
-    }
-  } catch (error: any) {
-    return { provider: 'twilio', period_start: period.startDate, period_end: period.endDate, currency: 'USD', amount: 0, amount_xof: null, basis: 'provider_reported', status: 'error', units: {}, breakdown: {}, source_ref: sid, error_message: error?.message || 'Twilio Usage API error' }
-  }
-}
+// Resend et Twilio ont été retirés : École OS n'envoie ni email ni SMS. Ces deux
+// intégrations ne servaient qu'à lire un coût fournisseur (et Resend paginait jusqu'à
+// 1 000 pages d'historique pour ça). Elles sont réactivables en réintroduisant un
+// ProviderSnapshot dans syncProviderCosts le jour où une vraie notification est ajoutée.
 
 export async function syncProviderCosts(periodDate = new Date()) {
   const period = monthBounds(periodDate)
-  const results = await Promise.all([syncVercel(period), syncSupabase(period), syncResend(period), syncTwilio(period)])
+  const results = await Promise.all([syncVercel(period), syncSupabase(period)])
   return { period, results }
 }

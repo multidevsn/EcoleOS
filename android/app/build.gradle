@@ -1,0 +1,129 @@
+plugins {
+    id "com.android.application"
+}
+
+// Config de signature du build release, lue depuis un fichier local JAMAIS commité
+// (keystore.properties est dans .gitignore, comme *.jks et *.keystore).
+// Voir RELEASE_SIGNING.md à la racine du projet Android pour générer ce fichier et la clé.
+def keystorePropsFile = rootProject.file("keystore.properties")
+def keystoreProps = new Properties()
+def hasSigningConfig = keystorePropsFile.exists()
+if (hasSigningConfig) {
+    keystoreProps.load(new FileInputStream(keystorePropsFile))
+}
+
+android {
+    namespace "org.ecoleos.app"
+    compileSdk 37
+
+    defaultConfig {
+        applicationId "org.ecoleos.app"
+        minSdk 24
+        targetSdk 35
+        versionCode 1
+        versionName "1.0.0"
+
+        // Origine HTTPS du serveur École OS. Ce n'est pas un secret : c'est l'adresse publique
+        // du déploiement. Elle est injectée au build pour pouvoir changer d'instance sans
+        // toucher au code Java :
+        //   ./gradlew assembleRelease -PecoleosServerOrigin=https://mon-ecole.vercel.app
+        def configuredOrigin = String.valueOf(
+            project.findProperty("ecoleosServerOrigin") ?: "https://ecole-os.vercel.app"
+        ).trim()
+        buildConfigField "String", "SERVER_ORIGIN", '"' + configuredOrigin.replace('"', '\\"') + '"'
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    signingConfigs {
+        debug {
+            v1SigningEnabled true
+            v2SigningEnabled true
+        }
+        if (hasSigningConfig) {
+            release {
+                storeFile rootProject.file(keystoreProps["storeFile"])
+                storePassword keystoreProps["storePassword"]
+                keyAlias keystoreProps["keyAlias"]
+                keyPassword keystoreProps["keyPassword"]
+                v1SigningEnabled true
+                v2SigningEnabled true
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix ".debug"
+            versionNameSuffix "-debug"
+        }
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+            if (hasSigningConfig) {
+                signingConfig signingConfigs.release
+            } else {
+                signingConfig signingConfigs.debug
+            }
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+def findWebDist() {
+    def candidates = [
+        rootProject.file("../dist"),
+        rootProject.file("../../EcoleOS/dist"),
+        rootProject.file("../../EcoleOS_web_security_fixes/dist"),
+        rootProject.file("../EcoleOS/dist"),
+        rootProject.file("../EcoleOS_web_security_fixes/dist")
+    ]
+    for (def candidate : candidates) {
+        if (new File(candidate, "index.html").isFile()) {
+            return candidate
+        }
+    }
+    return rootProject.file("../dist")
+}
+
+def webDist = findWebDist()
+def webAssets = file("src/main/assets/www")
+
+tasks.register("syncWebAssets", Sync) {
+    from(webDist)
+    into(webAssets)
+    includeEmptyDirs = false
+    doFirst {
+        if (!new File(webDist, "index.html").isFile()) {
+            // Un avertissement silencieux laissait passer un APK sans interface du tout.
+            throw new GradleException(
+                "Interface web introuvable dans " + webDist + ".\n" +
+                "Construisez d'abord le bundle Android :  npm run build:android\n" +
+                "(pas `npm run build` : ce mode embarque le service worker PWA et Vercel " +
+                "Analytics, qui n'ont rien à faire dans un WebView.)"
+            )
+        }
+        // Garde-fou : le bundle Android ne doit contenir ni service worker ni workbox.
+        def strays = ["sw.js", "workbox-abeb32eb.js"].findAll { new File(webDist, it).isFile() }
+        def pwaChunks = new File(webDist, "assets").isDirectory()
+            ? new File(webDist, "assets").list().findAll { it.startsWith("virtual_pwa-register") }
+            : []
+        if (!strays.isEmpty() || !pwaChunks.isEmpty()) {
+            throw new GradleException(
+                "Le bundle dans " + webDist + " est un build WEB (" + (strays + pwaChunks).join(", ") + ").\n" +
+                "Relancez  npm run build:android  pour produire le bundle destiné au WebView."
+            )
+        }
+    }
+}
+
+tasks.named("preBuild").configure {
+    dependsOn("syncWebAssets")
+}

@@ -1,7 +1,8 @@
 ﻿import React,{useEffect,useMemo,useState} from 'react'
 import {supabase} from './lib/supabase'
 import {fr,shortMoney,shortDate,Empty,KpiStrip,MiniBar,Card} from './shared'
-import {Panel,OrdersTable} from './ui'
+import {Panel,OrdersTable,ErrorNotice} from './ui'
+import {errorMessage} from './lib/errors'
 import {Mode} from './shared'
 import {Role,Theme,AppData,Profile,ScheduleRow,CommunityIdea,CommunitySurvey,IdeaStatus,avg,firstLetters,mention,money,roleLabels,roleLabel,foodCapabilities} from './appModel'
 import {BookOpen, CalendarDays, CheckCircle2, ChevronRight, CircleDollarSign, ClipboardList, Clock3, Gift, GraduationCap, KeyRound, Landmark, LogOut, Mail, Menu, Package, Save, School, ShieldCheck, ShoppingCart, FileUp, UserPlus, RefreshCw, Check, AlertTriangle, Sparkles, Star, UserRound, Users, UtensilsCrossed, WalletCards, X, Lightbulb, MessageSquarePlus, ThumbsUp, BarChart3, Palette, ListChecks, Gauge, Activity, ServerCog, MessageCircle, Megaphone, Send, Flag, ShieldAlert, Search, Info, UsersRound, LockKeyhole} from 'lucide-react'
@@ -42,7 +43,7 @@ export function SchoolMembers({role,session,mode}:{role:Role,session:any,mode:Mo
     const token=session?.access_token;if(!token){setLoading(false);return}
     setLoading(true);setError('')
     try{const res=await fetch('/api/members',{headers:{Authorization:'Bearer '+token}});const result=await res.json();if(!res.ok)throw new Error(result.error||'Impossible de charger les membres.');setRows(result.rows||[]);setCounts(result.counts||{})}
-    catch(e:any){setError(e?.message||'Erreur de chargement.')}finally{setLoading(false)}
+    catch(e:any){setError(errorMessage(e,'Erreur de chargement.'))}finally{setLoading(false)}
   }
   useEffect(()=>{load()},[mode,session?.access_token])
   function parseCsv(text:string){
@@ -61,12 +62,12 @@ export function SchoolMembers({role,session,mode}:{role:Role,session:any,mode:Mo
       const result=await res.json();if(!res.ok)throw new Error(result.error||'Impossible de valider le fichier.')
       setImportId(result.import_id||null);setPreview(result.results||[])
       setMessage(String(result.valid_count||0)+' ligne(s) valide(s) · '+String(result.invalid_count||0)+' à corriger avant import.')
-    }catch(e:any){setPreview([]);setImportId(null);setError(e?.message||'Erreur de validation.')}finally{setValidating(false)}
+    }catch(e:any){setPreview([]);setImportId(null);setError(errorMessage(e,'Impossible de vérifier ce fichier.'))}finally{setValidating(false)}
   }
   function onFile(file:File){
     setError('');setMessage('');setImportResults([]);setImportId(null);setFileName(file.name)
     const reader=new FileReader()
-    reader.onload=()=>{try{const rows=parseCsv(String(reader.result||''));void validateRows(rows,file.name)}catch(e:any){setPreview([]);setError(e?.message||'CSV invalide.')}}
+    reader.onload=()=>{try{const rows=parseCsv(String(reader.result||''));void validateRows(rows,file.name)}catch(e:any){setPreview([]);setError(errorMessage(e,'Le fichier CSV n’a pas pu être lu.'))}}
     reader.onerror=()=>setError('Impossible de lire le fichier.')
     reader.readAsText(file,'utf-8')
   }
@@ -85,7 +86,7 @@ export function SchoolMembers({role,session,mode}:{role:Role,session:any,mode:Mo
       setMessage(label+' : '+ok+' traité(s)'+(failed?' · '+failed+' erreur(s)':'')+'.')
       setForm({role:'student',full_name:'',email:'',phone:'',student_code:'',parent_name:'',parent_email:'',parent_phone:''})
       await load()
-    }catch(e:any){setError(e?.message||'Erreur de provisioning.')}finally{setBusy(false)}
+    }catch(e:any){setError(errorMessage(e,'Impossible d’enregistrer ces membres.'))}finally{setBusy(false)}
   }
 
   async function submitSingle(e:React.FormEvent){e.preventDefault();const member:any={role:form.role,full_name:form.full_name,email:form.email,phone:form.phone,student_code:form.student_code};if(form.role==='student'&&form.parent_email)member.parent={full_name:form.parent_name,email:form.parent_email,phone:form.parent_phone};await provision([member],'Création')}
@@ -124,7 +125,7 @@ export function DirectorPilotage({mode,session,data}:{mode:Mode,session:any,data
     if(mode==='demo'){setPayload({stats:{school_name:'École Démo Horizon',city:'Dakar',plan:'simple',subscription_status:'active',contract_price_xof:5000,active_users:168,included_users:100,overage_users:68,projected_bill_xof:6360,estimated_cost_xof:3150,provider_cost_xof:3380,cost_basis:'provider_allocation',projected_margin_xof:2980,students:112,parents:38,teachers:14,admins:4,events_this_month:4820,collected_this_month_xof:125000,pending_collections_xof:18000,food_orders_this_month:428},settings:{autopilot_enabled:true,auto_scaling_enabled:true,usage_pricing_enabled:true,auto_upgrade_enabled:false,spending_cap_xof:null},events:[{severity:'info',message:'Facturation recalculée automatiquement.',event_type:'billing_cycle_ready',created_at:new Date().toISOString()}]});setLoading(false);return}
     if(!session?.access_token)return
     setLoading(true);setError('')
-    try{const res=await fetch('/api/director/stats',{headers:{Authorization:`Bearer ${session.access_token}`}});const json=await res.json();if(!res.ok)throw new Error(json.error||'Statistiques indisponibles.');setPayload(json)}catch(e:any){setError(e?.message||'Erreur de chargement.')}finally{setLoading(false)}
+    try{const res=await fetch('/api/director/stats',{headers:{Authorization:`Bearer ${session.access_token}`}});const json=await res.json();if(!res.ok)throw new Error(json.error||'Statistiques indisponibles.');setPayload(json)}catch(e:any){setError(errorMessage(e,'Statistiques indisponibles pour le moment.'))}finally{setLoading(false)}
   }
   useEffect(()=>{load()},[mode,session?.access_token])
   const s=payload?.stats
@@ -186,20 +187,20 @@ export function DirectorBilling({mode,data,session}:{mode:Mode,data:AppData,sess
       if(!paddleInitialized){if(config.environment==='sandbox')window.Paddle.Environment.set('sandbox');window.Paddle.Initialize({token:paddleToken,...(config.customer_id?{pwCustomer:{id:config.customer_id}}:{}),eventCallback:(event:any)=>{if(event?.name==='checkout.completed'){setMsg('Paiement reçu. L’abonnement sera activé après confirmation du webhook Paddle.')}else if(event?.name==='checkout.closed'){setPaddleBusy(false)}}});paddleInitialized=true}
       window.Paddle.Checkout.open({items:[{priceId:config.price_id,quantity:1}],customer:{...(config.email?{email:config.email}:{})},customData:config.custom_data,settings:{displayMode:'overlay',successUrl:`${window.location.origin}/?subscription=paddle-success`}})
       setMsg('Finalisez le paiement dans la fenêtre Paddle. La confirmation sécurisée arrivera par webhook.')
-    }catch(error:any){setMsg(error?.message||'Erreur Paddle Checkout.');setPaddleBusy(false)}
+    }catch(error:any){setMsg(errorMessage(error,'Le paiement Paddle n’a pas pu être préparé.'));setPaddleBusy(false)}
   }
   async function managePaddle(){
     const token=session?.access_token;if(!token){setMsg('Session expirée.');return}
     setMsg('Ouverture du portail Paddle…')
     const response=await fetch('/api/paddle/director-portal',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({})})
-    const result=await response.json();if(!response.ok){setMsg(result.error||'Impossible d’ouvrir le portail Paddle.');return}
+    const result=await response.json();if(!response.ok){setMsg(errorMessage(result.error||new Error(`HTTP ${response.status}`),'Impossible d’ouvrir le portail Paddle.'));return}
     window.location.href=result.url
   }  async function payUsage(){
     if(mode==='demo'){setMsg('Mode démo : paiement de cycle simulé, aucun débit réel.');return}
     const token=session?.access_token;if(!token){setMsg('Session expirée.');return}
     setMsg('Création du paiement Wave…')
     const res=await fetch('/api/wave/checkout',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({type:'billing_cycle',billing_cycle_id:cycle?.id})})
-    const result=await res.json();if(!res.ok){setMsg(result.error||'Erreur Wave');return}window.location.href=result.wave_launch_url
+    const result=await res.json();if(!res.ok){setMsg(errorMessage(result.error||new Error(`HTTP ${res.status}`),'Le paiement Wave n’a pas pu être créé.'));return}window.location.href=result.wave_launch_url
   }
   const base=Number(sub?.billing_price_xof||0)
   const usageOnly=sub?.billing_provider==='paddle'
@@ -218,7 +219,7 @@ export function Payments({role,mode,data,session}:{role:Role,mode:Mode,data:AppD
     const token=session?.access_token;if(!token){setMsg('Session expirée.');return}
     setMsg('Création du paiement Wave…')
     const res=await fetch('/api/wave/checkout',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({type:'school_payment',payment_id:paymentId})})
-    const result=await res.json();if(!res.ok){setMsg(result.error||'Erreur Wave');return}window.location.href=result.wave_launch_url
+    const result=await res.json();if(!res.ok){setMsg(errorMessage(result.error||new Error(`HTTP ${res.status}`),'Le paiement Wave n’a pas pu être créé.'));return}window.location.href=result.wave_launch_url
   }
   return <><div className="payment-banner"><CircleDollarSign size={30}/><div><b>Échéancier scolaire</b><span>{due?`Prochaine échéance · ${new Intl.DateTimeFormat('fr-FR').format(new Date(due.due_date))}`:'Aucune échéance en attente'}</span></div><strong>{shortMoney(due?.amount_xof||0)}</strong></div><Panel title={role==='parent'?'Paiements de votre enfant':'Mes paiements'}>{data.payments.length?data.payments.map(p=><div className="payment-row" key={p.id}><span>{p.description}</span><b>{money(p.amount_xof)}</b><small className={p.status==='succeeded'?'ok':'pending'}>{p.status==='succeeded'?'Payé':p.status==='failed'?'Échec':p.status==='expired'?'Expiré':'À payer'}</small><button className="text-btn" disabled={p.status!=='pending'} onClick={()=>pay(p.id)}>{p.status==='succeeded'?'Reçu':p.status==='pending'?'Payer':'—'}</button></div>):<Empty text="Aucun paiement"/>}</Panel>{msg&&<div className="alert">{msg}</div>}</>}
 
@@ -229,84 +230,79 @@ export function Account({role,mode,data,session,theme,onThemeChange,onSaved}:{ro
   const [newPassword,setNewPassword]=useState('')
   const [confirmPassword,setConfirmPassword]=useState('')
   const [msg,setMsg]=useState('')
-  const [error,setError]=useState('')
+  const [error,setError]=useState<unknown>(null)
   const [busy,setBusy]=useState(false)
   useEffect(()=>setName(p?.full_name||''),[p?.id,p?.full_name])
   const email=mode==='live'?(session?.user?.email||''):(p?.email||'')
-  const profileClass=p?.class_name||'Non renseignée'
-  const schoolName=data.school?.name||'Aucune école liée'
-  const dataCards=[
-    {label:'Notes',value:data.grades.length,icon:GraduationCap},
-    {label:'Cours',value:data.schedule.length,icon:CalendarDays},
-    {label:'Paiements',value:data.payments.length,icon:CircleDollarSign},
-    {label:'Commandes',value:data.orders.length,icon:ShoppingCart},
-  ]
+  const demo=mode==='demo'
   async function saveProfile(e:React.FormEvent){
-    e.preventDefault();setBusy(true);setError('');setMsg('')
+    e.preventDefault();setBusy(true);setError(null);setMsg('')
     const clean=name.trim()
-    if(clean.length<2){setError('Le nom doit contenir au moins 2 caractères.');setBusy(false);return}
-    if(mode==='demo'){
-      setMsg('Mode démo : le profil est consultable mais reste en lecture seule.')
-      setBusy(false);return
-    }
+    if(clean.length<2){setError(new Error('Le nom doit contenir au moins 2 caractères.'));setBusy(false);return}
+    if(demo){setMsg('Mode démo : le profil est consultable mais reste en lecture seule.');setBusy(false);return}
     const {error:dbError}=await supabase.from('profiles').update({full_name:clean}).eq('id',session.user.id)
-    if(dbError){setError(dbError.message);setBusy(false);return}
+    if(dbError){setError(dbError);setBusy(false);return}
     const {error:authError}=await supabase.auth.updateUser({data:{full_name:clean}})
-    if(authError){setError(authError.message);setBusy(false);return}
+    if(authError){setError(authError);setBusy(false);return}
     onSaved({full_name:clean})
     setMsg('Profil enregistré.')
     setBusy(false)
   }
   async function changePassword(e:React.FormEvent){
-    e.preventDefault();setBusy(true);setError('');setMsg('')
-    if(mode==='demo'){setError('Le changement de mot de passe est disponible uniquement sur un compte réel.');setBusy(false);return}
-    if(newPassword.length<8){setError('Utilisez au moins 8 caractères pour le nouveau mot de passe.');setBusy(false);return}
-    if(newPassword!==confirmPassword){setError('Les deux mots de passe ne correspondent pas.');setBusy(false);return}
+    e.preventDefault();setBusy(true);setError(null);setMsg('')
+    if(demo){setError(new Error('Le changement de mot de passe est disponible uniquement sur un compte réel.'));setBusy(false);return}
+    if(newPassword.length<8){setError(new Error('Utilisez au moins 8 caractères pour le nouveau mot de passe.'));setBusy(false);return}
+    if(newPassword!==confirmPassword){setError(new Error('Les deux mots de passe ne correspondent pas.'));setBusy(false);return}
     const {error:updateError}=await supabase.auth.updateUser({password:newPassword})
-    if(updateError){setError(updateError.message);setBusy(false);return}
+    if(updateError){setError(updateError);setBusy(false);return}
     setNewPassword('');setConfirmPassword('');setMsg('Mot de passe mis à jour.')
     setBusy(false)
   }
+  // Identité de rattachement : une seule ligne compacte, pas une grille de compteurs
+  // (les volumes de notes, cours, paiements et commandes sont déjà sur l'accueil).
+  const attachments=[
+    {label:'Rôle',value:roleLabels[role]},
+    ...(p?.student_code?[{label:'Code élève',value:p.student_code}]:[]),
+    ...(p?.class_name?[{label:'Classe',value:p.class_name}]:[]),
+    ...(data.school?.name?[{label:'Établissement',value:data.school.name}]:[]),
+  ]
   return <>
     <div className="account-hero">
       <div className="account-avatar">{firstLetters(p?.full_name||'Utilisateur')}</div>
-      <div className="account-identity"><h1>{p?.full_name||'Mon compte'}</h1><p>Gérez votre identité, votre sécurité et les données rattachées à votre compte {roleLabels[role].toLowerCase()}.</p></div>
+      <div className="account-identity"><h1>{p?.full_name||'Mon compte'}</h1><p>{demo?'Compte de démonstration, en lecture seule.':'Votre identité et votre sécurité dans École OS.'}</p></div>
       <div className="account-role"><ShieldCheck size={16}/><span>{roleLabels[role]}</span></div>
     </div>
-    <div className="account-data-grid">{dataCards.map(({label,value,icon:Icon})=><div className="account-data-card" key={label}><span><Icon size={17}/>{label}</span><strong>{value}</strong><small>Enregistré</small></div>)}</div>
+    <div className="account-attachments">{attachments.map(item=><div key={item.label}><span>{item.label}</span><b>{item.value}</b></div>)}</div>
     <div className="account-grid">
       <section className="panel account-panel">
-        <div className="panel-head"><div><h3>Informations personnelles</h3><span className="panel-subtitle">Les informations utilisées dans École OS.</span></div><Sparkles size={18}/></div>
+        <div className="panel-head"><div><h3>Informations personnelles</h3><span className="panel-subtitle">Ce que les autres membres voient de vous.</span></div><UserRound size={18}/></div>
         <form className="account-form" onSubmit={saveProfile}>
-          <label>Nom complet<div className="input-with-icon"><UserRound size={16}/><input value={name} onChange={e=>setName(e.target.value)} placeholder="Nom et prénom"/></div></label>
+          <label>Nom complet<div className="input-with-icon"><UserRound size={16}/><input value={name} onChange={e=>setName(e.target.value)} placeholder="Nom et prénom" disabled={demo}/></div></label>
           <label>Email<div className="input-with-icon disabled"><Mail size={16}/><input value={email} readOnly/></div></label>
-          <div className="account-fields-2"><label>Rôle<div className="readonly-field"><ShieldCheck size={16}/>{roleLabels[role]}</div></label><label>Code élève<div className="readonly-field"><BookOpen size={16}/>{p?.student_code||'—'}</div></label></div>
-          <div className="account-fields-2"><label>Classe<div className="readonly-field">{profileClass}</div></label><label>Établissement<div className="readonly-field">{schoolName}</div></label></div>
-          {error&&<div className="alert error">{error}</div>}{msg&&<div className="alert">{msg}</div>}
-          <button className="primary" disabled={busy}><Save size={16}/>{busy?'Enregistrement…':'Enregistrer les modifications'}</button>
+          {error?<ErrorNotice error={error}/>:null}{msg&&<div className="alert success">{msg}</div>}
+          <button className="primary" disabled={busy||demo}><Save size={16}/>{busy?'Enregistrement…':'Enregistrer'}</button>
+        </form>
+      </section>
+      <section className="panel account-panel">
+        <div className="panel-head"><div><h3>Mot de passe</h3><span className="panel-subtitle">8 caractères minimum.</span></div><KeyRound size={18}/></div>
+        <form className="account-form" onSubmit={changePassword}>
+          <label>Nouveau mot de passe<div className="input-with-icon"><KeyRound size={16}/><input type="password" minLength={8} value={newPassword} onChange={e=>setNewPassword(e.target.value)} placeholder="8 caractères minimum" disabled={demo}/></div></label>
+          <label>Confirmer<div className="input-with-icon"><KeyRound size={16}/><input type="password" minLength={8} value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} placeholder="Répétez le nouveau mot de passe" disabled={demo}/></div></label>
+          <button className="outline full" disabled={busy||demo}>Mettre à jour</button>
         </form>
       </section>
       <section className="panel account-panel appearance-panel">
-        <div className="panel-head"><div><h3>Apparence</h3><span className="panel-subtitle">Trois ambiances, même École OS. Rien de plus.</span></div><Palette size={18}/></div>
+        <div className="panel-head"><div><h3>Apparence</h3><span className="panel-subtitle">Trois ambiances, même École OS.</span></div><Palette size={18}/></div>
         <div className="theme-picker">
           <button className={theme==='cahier'?'selected':''} onClick={()=>onThemeChange('cahier')}><span className="theme-swatch cahier"/><b>Cahier</b><small>Identité actuelle</small></button>
           <button className={theme==='epure'?'selected':''} onClick={()=>onThemeChange('epure')}><span className="theme-swatch epure"/><b>Épuré</b><small>Plus sobre</small></button>
           <button className={theme==='brume'?'selected':''} onClick={()=>onThemeChange('brume')}><span className="theme-swatch brume"/><b>Brume</b><small>Doux & calme</small></button>
         </div>
       </section>
-      <section className="panel account-panel">
-        <div className="panel-head"><div><h3>Sécurité</h3><span className="panel-subtitle">Gardez votre accès protégé.</span></div><KeyRound size={18}/></div>
-        <div className="security-note"><CheckCircle2 size={17}/><div><b>Session sécurisée</b><span>{mode==='live'?'Vous êtes connecté à votre compte.':'Compte de démonstration.'}</span></div></div>
-        <form className="account-form" onSubmit={changePassword}>
-          <label>Nouveau mot de passe<div className="input-with-icon"><KeyRound size={16}/><input type="password" minLength={8} value={newPassword} onChange={e=>setNewPassword(e.target.value)} placeholder="8 caractères minimum"/></div></label>
-          <label>Confirmer<div className="input-with-icon"><KeyRound size={16}/><input type="password" minLength={8} value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} placeholder="Répétez le nouveau mot de passe"/></div></label>
-          <button className="outline full" disabled={busy}>Mettre à jour le mot de passe</button>
-          <div className="account-tip"><b>À savoir</b><span>Votre adresse email sert à vous connecter. Sa modification peut demander une confirmation.</span></div>
-        </form>
-      </section>
     </div>
   </>
 }
+
 
 
 
