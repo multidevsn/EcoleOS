@@ -1,0 +1,1 @@
+import{c as e}from"./supabase-IhiBtRbP.js";const t="https://gieszwmztjrutzkfuwqz.supabase.co",s="sb_publishable_Td20BfaFLt5qplcwp2HfUQ_Qw12ghgr",o=e(t,s,{auth:{persistSession:!0,autoRefreshToken:!0,detectSessionInUrl:!0}});export{o as supabase};
