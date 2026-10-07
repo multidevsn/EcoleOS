@@ -143,5 +143,106 @@ Migration : `supabase/migrations/20260926_community_messaging.sql`.
 
 Le parti-pris UX est volontairement calme : pas de flux infini, pas de classement social, pas de pluie de notifications. Les annonces restent séparées de la conversation générale.
 
-### Resend
-Le serveur lit `RESEND_API_KEY` uniquement côté serveur, notamment pour la synchronisation des coûts Resend. La clé réelle est stockée localement dans `.env.local` (ignoré par Git) et **n'est pas embarquée dans le ZIP distribué**. Pour Vercel, elle doit être ajoutée comme variable d'environnement serveur.
+## 2026-10-07 — Correctifs APK, erreurs, rôle directeur, services
+
+Six problèmes remontés ont été corrigés. Le détail du nettoyage des services est dans
+[`SERVICES.md`](SERVICES.md).
+
+### 1. L'APK affichait une page blanche en mode connecté
+
+`MainActivity.getTrustedServerOrigin()` « obfusquait » l'adresse du serveur par XOR.
+La table d'octets était corrompue : elle se décodait en `httpw8//egole-ow.vefgel.app`
+au lieu de `https://ecole-os.vercel.app`. WebView refusait cette base URL invalide et
+n'affichait rien — tandis que le mode démo, lui, utilisait une URL valide
+(`https://demo.ecole-os.invalid`) : d'où le symptôme « la démo marche, la connexion non ».
+
+- L'origine est maintenant une constante lisible, injectée au build
+  (`./gradlew assembleRelease -PecoleosServerOrigin=https://mon-ecole.vercel.app`).
+- `normalizeOrigin()` valide le schéma, l'hôte, l'absence de chemin ; une origine
+  invalide affiche un écran natif explicite au lieu d'un WebView vide.
+- `onReceivedError` / `onReceivedHttpError` / `onReceivedSslError` affichent cet écran
+  natif avec un bouton « Réessayer » (avant : un simple Toast, page blanche).
+- `onProgressChanged` affiche la progression dans la barre du haut.
+- Le WebView est désormais détruit dans `onDestroy()` (fuite de l'activité entière).
+- L'APK livré contenait un build **web** (`sw.js`, `workbox-*`, `virtual_pwa-register-*`)
+  au lieu d'un build Android. `syncWebAssets` refuse maintenant de compiler dans ce cas.
+
+### 2. Chargements trop longs
+
+- Toutes les requêtes Supabase passent par un `fetch` borné à 20 s (`src/lib/net.ts`) :
+  plus d'écran figé sur « Chargement… » sans fin ni erreur.
+- Une section d'accueil en échec n'annule plus les autres (`track()` capture l'erreur au
+  lieu de la propager) ; l'accueil reste utilisable.
+- Vercel Analytics et Speed Insights ne sont plus chargés ni exécutés.
+- L'effet de chargement par onglet ne se relance plus à chaque publication de données
+  (il dépendait de l'identité du tableau `homePending`).
+- CSS réduit de 69,1 Ko à 59,6 Ko (137 règles mortes supprimées).
+
+### 3. Gestion des erreurs
+
+Les messages bruts de PostgreSQL, PostgREST et Supabase Auth étaient affichés tels quels
+à tous les utilisateurs (`{data.error&&<div className="alert error">{data.error}</div>}`,
+`<pre>{this.state.error.message}</pre>` dans l'ErrorBoundary, `setMsg(error.message)` dans
+l'inscription).
+
+- `src/lib/errors.ts` traduit toute erreur en phrase française non technique et conserve
+  le détail brut séparément.
+- `<ErrorNotice/>` (`src/ui.tsx`) est l'affichage unique : message clair, bouton
+  « Réessayer » quand l'erreur est transitoire, et détail technique **uniquement** pour les
+  administrateurs de la plateforme (ou en développement).
+- Tous les `setError(e?.message)` / `setMsg(error.message)` ont été remplacés.
+
+### 4. Un directeur qui inscrit son école n'est plus créé « Élève »
+
+`handle_new_user()` créait toujours le profil avec le rôle par défaut `student` ; la
+promotion en `director` dépendait de la réussite de `/api/onboarding/school`, repoussée à
+la première connexion quand la confirmation d'email est activée. Tout échec laissait le
+directeur définitivement Élève.
+
+- `signUp` transmet `role: 'director'`, et `handle_new_user()` l'honore — pour `director`
+  uniquement, seul rôle accessible par auto-inscription.
+- La demande d'école est enregistrée **avant** l'inscription et conservée jusqu'à ce que la
+  finalisation ait réellement réussi (elle est rejouée à la connexion suivante).
+- `create_school_onboarding()` répare un profil désaligné au lieu de lever
+  `ONBOARDING_INCOMPLETE`, et renvoie `repaired` / `role`.
+- Après une inscription réussie, l'application ouvre directement l'espace Directeur.
+
+Migration : `supabase/migrations/20261007_director_role_fix.sql` (elle réaligne aussi les
+comptes déjà créés).
+
+### 5. Mon compte et Communauté ramenés au socle SLC
+
+- **Mon compte** : suppression de la grille de 4 compteurs (Notes / Cours / Paiements /
+  Commandes — déjà sur l'accueil), du bloc « Session sécurisée », de l'encart « À savoir »
+  et des champs en lecture seule dispersés. Il reste : identité, rattachements compacts,
+  mot de passe, apparence.
+- **Communauté** : suppression du bloc explicatif « Un espace = un contexte », du champ de
+  recherche (inutile avec 3 espaces), de la note de bas de liste, du bandeau de statut, de
+  la détection d'intention « vous semblez proposer une amélioration » et de son bouton
+  « Ajouter à Evolution » (l'onglet Agora existe déjà), et de la mention légale sous le
+  champ de saisie. Il reste : la liste des espaces, le fil, le signalement, la composition.
+- 137 règles CSS mortes supprimées au passage (messagerie v1, panneaux retirés).
+
+### 6. La barre latérale bleue était coupée
+
+`.sidebar` est en `position:fixed` sur toute la hauteur de l'écran, sans zone de défilement
+interne : tout ce qui dépassait (onglet « Mon compte », « Se déconnecter ») sortait de
+l'écran et devenait inaccessible, puisque la page principale ne fait pas défiler un élément
+fixe. La barre défile maintenant verticalement, et un palier `max-height:760px` resserre
+les espacements sur les écrans courts.
+
+### 7. Services supprimés
+
+Resend, Twilio, Vercel Analytics, Vercel Speed Insights, la lecture Vercel Web Analytics,
+et deux modules morts (`src/lib/telemetry.ts`, `src/lib/ownerTraffic.ts`).
+Détail et variables à retirer : [`SERVICES.md`](SERVICES.md).
+
+### À traiter séparément
+
+`keyPublish/keyPath` (un keystore PKCS#12 de 2 676 octets) et `keyPublish/2Password.txt`
+(son mot de passe, en clair) sont **committés dans ce dépôt**. C'est la clé de signature de
+l'application. `android/RELEASE_SIGNING.md` dit explicitement qu'elle ne doit exister que
+sur votre machine. À faire : sortir ces fichiers du dépôt, purger l'historique Git, et
+générer une nouvelle clé — toute clé déjà poussée sur un dépôt public doit être considérée
+comme compromise. `.gitignore` couvre désormais `keyPublish/`, mais cela n'efface pas
+l'historique.

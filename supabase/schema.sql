@@ -17,7 +17,16 @@ create table if not exists public.point_ledger(id uuid primary key default gen_r
 create table if not exists public.rewards(id uuid primary key default gen_random_uuid(),name text not null,points_cost integer not null check(points_cost>0),active boolean not null default true);
 create table if not exists public.reward_redemptions(id uuid primary key default gen_random_uuid(),user_id uuid references public.profiles(id) not null,reward_id uuid references public.rewards(id) not null,points_spent integer not null,created_at timestamptz not null default now());
 create table if not exists public.wave_events(id text primary key,event_type text not null,payload jsonb not null,received_at timestamptz not null default now());
-create or replace function public.handle_new_user() returns trigger language plpgsql security definer set search_path=public as $$ begin insert into public.profiles(id,full_name,role) values(new.id,coalesce(new.raw_user_meta_data->>'full_name',''),'student') on conflict(id) do nothing; return new; end $$;
+create or replace function public.handle_new_user() returns trigger language plpgsql security definer set search_path=public as $$
+declare v_role public.app_role;
+begin
+  -- Un compte qui s'inscrit seul ne peut se déclarer que « director » ; toute autre valeur
+  -- retombe sur le rôle par défaut 'student'. Voir migrations/20261007_director_role_fix.sql.
+  v_role := 'student';
+  if lower(coalesce(new.raw_user_meta_data->>'role','')) = 'director' then v_role := 'director'; end if;
+  insert into public.profiles(id,full_name,role) values(new.id,coalesce(new.raw_user_meta_data->>'full_name',''),v_role) on conflict(id) do nothing;
+  return new;
+end $$;
 drop trigger if exists on_auth_user_created on auth.users; create trigger on_auth_user_created after insert on auth.users for each row execute procedure public.handle_new_user();
 create or replace function private.is_staff() returns boolean language sql security definer set search_path=public as $$ select exists(select 1 from public.profiles where id=auth.uid() and role in ('admin','teacher','cafeteria')); $$;
 revoke all on function private.is_staff() from public; grant execute on function private.is_staff() to authenticated;

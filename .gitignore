@@ -1,0 +1,25 @@
+# Dépendances
+node_modules/
+
+# Builds (le bundle web est regénéré par `npm run build` / `npm run build:android`)
+dist/
+*.tsbuildinfo
+
+# Android : voir android/.gitignore
+android/app/src/main/assets/www/
+android/.gradle/
+android/**/build/
+android/local.properties
+android/keystore.properties
+*.jks
+*.keystore
+
+# Secrets et configuration locale — ne JAMAIS committer
+.env
+.env.*
+!.env.example
+keyPublish/
+
+# Outils
+.DS_Store
+*.log

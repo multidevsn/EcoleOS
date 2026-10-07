@@ -1,7 +1,9 @@
-﻿import React, {useEffect, useMemo, useRef, useState} from 'react'
+import React, {useEffect, useMemo, useRef, useState} from 'react'
 import {Mode, fr, shortMoney, frToday, shortDate, Empty, KpiStrip, MiniBar, Card} from './shared'
 import {Panel, OrdersTable} from './ui'
 import {createRoot} from 'react-dom/client'
+
+import {apiRequest,fetchWithTimeout,withTimeout} from './lib/net'
 
 let supabaseModulePromise: Promise<typeof import('./lib/supabase')> | null = null
 const loadSupabase = async () => {
@@ -22,9 +24,8 @@ const RewardsScreen=React.lazy(()=>import('./screens-engagement').then(m=>({defa
 const AgoraScreen=React.lazy(()=>import('./screens-engagement').then(m=>({default:m.Agora})))
 const CommunityScreen=React.lazy(()=>import('./screens-engagement').then(m=>({default:m.Community})))
 function ScreenFallback(){return <div className="panel"><div className="skeleton"><i/><i/></div></div>}
-import {Analytics} from '@vercel/analytics/react'
-import {SpeedInsights} from '@vercel/speed-insights/react'
-import {applyOwnerParam,isOwnerDevice,setOwnerDevice,skipOwnerVisits} from './lib/ownerTraffic'
+import {describeError,errorMessage,isStaleChunkError as isStaleChunkFailure,setTechnicalErrorsVisible} from './lib/errors'
+import {ErrorNotice} from './ui'
 import {BookOpen, CalendarDays, CheckCircle2, ChevronRight, CircleDollarSign, ClipboardList, Clock3, Gift, GraduationCap, KeyRound, Landmark, LogOut, Mail, Menu, Package, Save, School, ShieldCheck, ShoppingCart, FileUp, UserPlus, RefreshCw, Check, AlertTriangle, Sparkles, Star, UserRound, Users, UtensilsCrossed, WalletCards, X, Lightbulb, MessageSquarePlus, ThumbsUp, BarChart3, Palette, ListChecks, Gauge, Activity, ServerCog, MessageCircle, Megaphone, Send, Flag, ShieldAlert, Search, Info, UsersRound, LockKeyhole} from 'lucide-react'
 import './fonts.css'
 import './styles.css'
@@ -127,17 +128,13 @@ function Brand({sub}:{sub?:string}){return <div className="brand"><div className
 // Un chunk chargé à la demande (React.lazy, ex. l’onglet Ops) peut avoir un nom qui change à chaque
 // déploiement. Si le navigateur a gardé une ancienne page en mémoire au moment du clic, il peut tenter de
 // charger un fichier qui n’existe plus sur le serveur : ce n’est pas une vraie erreur d’application, juste
-// une version obsolète. On la détecte par son message caractéristique et on recharge une seule fois pour
-// récupérer la dernière version, avant d’afficher l’écran d’erreur.
-function isStaleChunkError(error:Error){
-  return /Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed/i.test(error?.message||'')
-}
+// une version obsolète. On la détecte et on recharge une seule fois pour récupérer la dernière version.
 const STALE_RELOAD_KEY='eos-stale-chunk-reload'
 
 class ErrorBoundary extends React.Component<{children:React.ReactNode},{error:Error|null}>{
   state:{error:Error|null}={error:null}
   static getDerivedStateFromError(error:Error){
-    if(isStaleChunkError(error)){
+    if(isStaleChunkFailure(error)){
       let alreadyTried=false
       try{alreadyTried=sessionStorage.getItem(STALE_RELOAD_KEY)==='1'}catch{/* stockage indisponible */}
       if(!alreadyTried){
@@ -148,51 +145,95 @@ class ErrorBoundary extends React.Component<{children:React.ReactNode},{error:Er
     }
     return {error}
   }
-  componentDidCatch(error:Error,info:React.ErrorInfo){console.error('École OS — erreur d’affichage',error,info.componentStack)}
+  componentDidCatch(error:Error,info:React.ErrorInfo){
+    // Le détail technique part dans la console (et donc dans les outils de diagnostic),
+    // jamais dans l'interface : un utilisateur ne doit pas lire une stack trace.
+    console.error('École OS — erreur d’affichage',error,info.componentStack)
+  }
   render(){
     if(!this.state.error)return this.props.children
-    return <main className="crash"><div className="auth-card"><Brand/><h1>Une erreur est survenue</h1><p className="muted">Cet écran n’a pas pu s’afficher. Rechargez la page, ou revenez à la connexion.</p><pre>{this.state.error.message}</pre><div className="actions"><button className="primary" onClick={()=>location.reload()}>Recharger la page</button><button className="outline" onClick={()=>{try{sessionStorage.removeItem('ecole-os-demo-role')}catch{}location.href='/'}}>Retour à la connexion</button></div></div></main>
+    return <main className="crash"><div className="auth-card"><Brand/><h1>Une erreur est survenue</h1><p className="muted">Cet écran n’a pas pu s’afficher. Rechargez la page, ou revenez à la connexion.</p>
+      <ErrorNotice error={this.state.error}/>
+      <div className="actions"><button className="primary" onClick={()=>location.reload()}>Recharger la page</button><button className="outline" onClick={()=>{try{sessionStorage.removeItem('ecole-os-demo-role')}catch{}location.href='/'}}>Retour à la connexion</button></div></div></main>
   }
+}
+
+const PENDING_SCHOOL_KEY='ecole-os-pending-school'
+
+/**
+ * Finalise l'inscription d'une école laissée en attente.
+ *
+ * Le contexte : `supabase.auth.signUp()` crée l'utilisateur, et un trigger SQL crée son profil
+ * avec le rôle par défaut `student`. C'est l'appel à `/api/onboarding/school` qui promeut ce
+ * profil en `director` et rattache l'établissement. Quand la confirmation d'email est activée,
+ * `signUp` ne renvoie pas de session : la finalisation était repoussée à la première connexion,
+ * et si cet appel échouait, le directeur restait définitivement « Élève ».
+ *
+ * La demande en attente est donc conservée jusqu'à ce que la finalisation ait réellement réussi.
+ */
+async function finalizePendingSchool(accessToken:string):Promise<{ok:boolean;error?:unknown;data?:any}>{
+  const raw=localStorage.getItem(PENDING_SCHOOL_KEY)
+  if(!raw)return {ok:true}
+  let school:any=null
+  try{school=JSON.parse(raw)?.school}catch{school=null}
+  if(!school||typeof school!=='object'){
+    localStorage.removeItem(PENDING_SCHOOL_KEY)
+    return {ok:true}
+  }
+  const result=await apiRequest('/api/onboarding/school',{
+    method:'POST',
+    headers:{'Content-Type':'application/json',Authorization:`Bearer ${accessToken}`},
+    body:JSON.stringify(school),
+  },30000)
+  if(!result.ok){
+    // On garde la demande en attente : elle sera rejouée à la prochaine connexion.
+    return {ok:false,error:result.error}
+  }
+  localStorage.removeItem(PENDING_SCHOOL_KEY)
+  return {ok:true,data:result.data}
 }
 
 function Login({onSchool,onDemo}:{onSchool:()=>void,onDemo:(r:Role)=>void}){
   const [email,setEmail]=useState('')
   const [password,setPassword]=useState('')
   const [loading,setLoading]=useState(false)
-  const [error,setError]=useState('')
+  const [error,setError]=useState<unknown>(null)
+  const [notice,setNotice]=useState('')
 
   async function submit(e:React.FormEvent){
     e.preventDefault()
     setLoading(true)
-    setError('')
+    setError(null)
+    setNotice('')
     // L'accès démo se fait uniquement via les boutons "Espaces de démonstration" ci-dessous (onDemo),
     // jamais par email/mot de passe : aucun identifiant de démonstration n'est embarqué dans le code.
 
-    const supabase=await loadSupabase()
-    const {data,error}=await supabase.auth.signInWithPassword({email:email.trim(),password})
-    if(error){
-      setError(error.message==='Invalid login credentials'?'Email ou mot de passe incorrect.':error.message)
-      setLoading(false)
-      return
-    }
+    try{
+      const supabase=await loadSupabase()
+      const {data,error:authError}=await withTimeout(
+        supabase.auth.signInWithPassword({email:email.trim(),password}),
+        25000,
+        'connexion',
+      )
+      if(authError){setError(authError);return}
 
-    const pendingRaw=localStorage.getItem('ecole-os-pending-school')
-    if(data.session&&pendingRaw){
-      try{
-        const pending=JSON.parse(pendingRaw)
-        const res=await fetch('/api/onboarding/school',{
-          method:'POST',
-          headers:{'Content-Type':'application/json',Authorization:`Bearer ${data.session.access_token}`},
-          body:JSON.stringify(pending.school)
-        })
-        const result=await res.json()
-        if(!res.ok) throw new Error(result.error||'Impossible de finaliser l’inscription de l’école.')
-        localStorage.removeItem('ecole-os-pending-school')
-      }catch(e:any){
-        setError(e?.message||'Le compte est connecté mais l’inscription de l’école reste à finaliser.')
+      const pendingRaw=localStorage.getItem(PENDING_SCHOOL_KEY)
+      if(data.session&&pendingRaw){
+        // Une inscription d'école restée en attente est finalisée à la première connexion
+        // réussie — c'est ce qui fait basculer le compte de « Élève » à « Directeur ».
+        const result=await finalizePendingSchool(data.session.access_token)
+        if(!result.ok){
+          // Le compte s'ouvre quand même, mais le directeur doit savoir que son
+          // établissement n'est pas rattaché et que ce sera retenté.
+          setNotice('Vous êtes connecté, mais votre établissement n’a pas encore pu être rattaché. La création sera relancée automatiquement à votre prochaine connexion.')
+          setError(result.error)
+        }
       }
+    }catch(e:any){
+      setError(e)
+    }finally{
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   return <main className="os-login">
@@ -258,7 +299,8 @@ function Login({onSchool,onDemo}:{onSchool:()=>void,onDemo:(r:Role)=>void}){
         <form onSubmit={submit}>
           <label>Email<input type="email" required autoComplete="username" value={email} onChange={e=>setEmail(e.target.value)} placeholder="vous@ecole.sn"/></label>
           <label>Mot de passe<input type="password" required autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)}/></label>
-          {error&&<div className="alert error" role="alert">{error}</div>}
+          {error?<ErrorNotice error={error} onRetry={()=>setError(null)}/>:null}
+          {notice&&<div className="alert">{notice}</div>}
           <button className="primary full os-login-submit" disabled={loading}>{loading?'Ouverture…':'Ouvrir mon espace'}<ChevronRight size={18}/></button>
         </form>
 
@@ -284,6 +326,7 @@ async function fetchLiveData(userId:string,onProgress?:(update:Partial<AppData>)
   const empty:AppData={profile:null,studentId:null,school:null,subscription:null,referral:null,grades:[],schedule:[],payments:[],points:[],foodItems:[],orders:[],rewards:[],loading:false,error:null}
   let partial:AppData=empty
   let settled=false
+  const sectionErrors:{section:string;error:any}[]=[]
   const publish=(update:Partial<AppData>)=>{
     partial={...partial,...update}
     onProgress?.(update)
@@ -350,6 +393,15 @@ async function fetchLiveData(userId:string,onProgress?:(update:Partial<AppData>)
         publish({...apply(result),homePending,homeDataLoading:homePending.length>0})
       }
       return result
+    }).catch((error:any)=>{
+      // Une section en échec ne doit plus emporter tout l'accueil : les autres restent
+      // affichées, et l'erreur est traduite en message compréhensible.
+      if(!settled){
+        const homePending=(partial.homePending||[]).filter(item=>item!==section)
+        publish({homePending,homeDataLoading:homePending.length>0})
+      }
+      sectionErrors.push({section,error})
+      return {data:null,error}
     })
     performance.mark('eos:home-queries:start')
     const [gradesRes,scheduleRes,paymentsRes,pointsRes,ordersRes,schoolRes,subRes,refRes]=await Promise.all([
@@ -397,9 +449,11 @@ async function fetchLiveData(userId:string,onProgress?:(update:Partial<AppData>)
     performance.mark('eos:home-queries:end')
     performance.measure('eos:home-queries','eos:home-queries:start','eos:home-queries:end')
 
-    for(const result of [gradesRes,scheduleRes,paymentsRes,pointsRes,ordersRes,schoolRes,subRes,refRes]){
-      if(result?.error)throw result.error
-    }
+    // Les sections en échec n'annulent pas les sections réussies : on remonte un message
+    // unique, traduit, et l'accueil reste utilisable.
+    const softError=sectionErrors.length
+      ? describeError(sectionErrors[0].error,`Impossible de charger : ${sectionErrors.map(x=>x.section).join(', ')}.`).message
+      : null
 
     const grades=mapGrades(gradesRes.data||[])
     const schedule=mapSchedule(scheduleRes.data||[])
@@ -407,6 +461,7 @@ async function fetchLiveData(userId:string,onProgress?:(update:Partial<AppData>)
     // Anti-surprise UX : l'accueil travaille volontairement avec un aperçu.
     // Les onglets détaillés rechargent leur historique complet à l'ouverture.
     settled=true
+    if(softError)onProgress?.({error:softError})
     return {
       profile:{id:profileRow.id,full_name:profileRow.full_name,role:effectiveRole,email:'',school_id:profileRow.school_id,student_code:profileRow.student_code,class_name:className},
       studentId,
@@ -423,12 +478,15 @@ async function fetchLiveData(userId:string,onProgress?:(update:Partial<AppData>)
       loading:false,
       homeDataLoading:false,
       homePending:[],
-      error:null,
+      error:softError,
     }
   }catch(e:any){
     settled=true
-    const failed={...partial,loading:false,homeDataLoading:false,homePending:[],error:e?.message||'Impossible de charger les données.'}
-    onProgress?.({loading:false,homeDataLoading:false,homePending:[],error:failed.error})
+    // Erreur dure : seule la lecture du profil peut encore échouer ici. Sans profil,
+    // aucun rôle n'est connu et l'espace ne peut pas s'afficher.
+    const message=errorMessage(e,'Impossible de charger votre espace.')
+    const failed={...partial,loading:false,homeDataLoading:false,homePending:[],error:message}
+    onProgress?.({loading:false,homeDataLoading:false,homePending:[],error:message})
     return failed
   }
 }
@@ -482,37 +540,63 @@ async function fetchDemoData(role:Role):Promise<AppData>{
       rewards:[],
       loading:false,error:null
     }
-  }catch(e:any){return {profile:null,studentId:null,school:null,subscription:null,referral:null,grades:[],schedule:[],payments:[],points:[],foodItems:[],orders:[],rewards:[],loading:false,error:e?.message||'Les données de démo sont indisponibles.'}}
+  }catch(e:any){return {profile:null,studentId:null,school:null,subscription:null,referral:null,grades:[],schedule:[],payments:[],points:[],foodItems:[],orders:[],rewards:[],loading:false,error:errorMessage(e,'Les données de démo sont indisponibles.')}}
 }
 
-function SchoolOnboarding({onBack}:{onBack:()=>void}){
+function SchoolOnboarding({onBack,onDone}:{onBack:()=>void,onDone:()=>void}){
   const [step,setStep]=useState<1|2>(1)
   const [director,setDirector]=useState({name:'',email:'',password:''})
   const [school,setSchool]=useState({name:'',city:'',plan:'simple' as 'simple'|'extra',referral:''})
   const [msg,setMsg]=useState('')
+  const [error,setError]=useState<unknown>(null)
   const [busy,setBusy]=useState(false)
+  const [created,setCreated]=useState(false)
   async function submit(e:React.FormEvent){
-    e.preventDefault();setBusy(true);setMsg('')
-    const supabase=await loadSupabase()
-    const {data,error}=await supabase.auth.signUp({email:director.email,password:director.password,options:{data:{full_name:director.name}}})
-    if(error){setBusy(false);setMsg(error.message);return}
-    if(!data.session){
-      localStorage.setItem('ecole-os-pending-school',JSON.stringify({email:director.email,school}))
-      setBusy(false);setMsg('Compte créé. Vérifiez votre email puis connectez-vous : l’inscription de l’école sera finalisée automatiquement.');return
+    e.preventDefault();setBusy(true);setMsg('');setError(null)
+    try{
+      const supabase=await loadSupabase()
+      // La demande est enregistrée AVANT l'inscription : si la connexion tombe ou si
+      // l'appel serveur échoue, elle sera rejouée à la prochaine connexion au lieu de
+      // laisser un directeur définitivement classé « Élève ».
+      localStorage.setItem(PENDING_SCHOOL_KEY,JSON.stringify({email:director.email,school}))
+      // Le rôle demandé est passé dans les métadonnées d'inscription : le trigger SQL
+      // `handle_new_user` crée alors directement un profil « director » au lieu du
+      // « student » par défaut.
+      const {data,error:signUpError}=await withTimeout(
+        supabase.auth.signUp({email:director.email,password:director.password,options:{data:{full_name:director.name,role:'director'}}}),
+        30000,
+        'inscription',
+      )
+      if(signUpError){localStorage.removeItem(PENDING_SCHOOL_KEY);setError(signUpError);return}
+      if(!data.session){
+        setCreated(true)
+        setMsg('Compte créé. Confirmez votre adresse email puis connectez-vous : votre établissement sera rattaché automatiquement et votre espace s’ouvrira en Directeur.')
+        return
+      }
+      const result=await finalizePendingSchool(data.session.access_token)
+      if(!result.ok){
+        setError(result.error)
+        setMsg('Votre compte est créé. La création de l’établissement n’a pas abouti : elle sera relancée automatiquement à votre prochaine connexion.')
+        return
+      }
+      setCreated(true)
+      setMsg(result.data?.replayed
+        ? `Votre école est déjà configurée : ${result.data?.school_name}. Code de parrainage : ${result.data?.referral_code}`
+        : `École créée : ${result.data?.school_name}. Abonnement ${result.data?.plan} préparé. Code de parrainage : ${result.data?.referral_code}`)
+      // La session vient d'être ouverte par signUp : on bascule directement dans l'espace
+      // Directeur au lieu de renvoyer le directeur vers l'écran de connexion.
+      setTimeout(onDone,1200)
+    }catch(e:any){
+      setError(e)
+    }finally{
+      setBusy(false)
     }
-    const res=await fetch('/api/onboarding/school',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${data.session.access_token}`},body:JSON.stringify(school)})
-    const result=await res.json();setBusy(false)
-    if(!res.ok){setMsg(result.error||'Impossible de créer l’école.');return}
-    localStorage.removeItem('ecole-os-pending-school')
-    setMsg(result.replayed
-      ? `Votre école est déjà configurée : ${result.school_name}. Code de parrainage : ${result.referral_code}`
-      : `École créée : ${result.school_name}. Abonnement ${result.plan} préparé. Code de parrainage : ${result.referral_code}`)
   }
   return <main className="auth"><div className="auth-card wide-card">
     <Brand sub="Créer l’espace de votre établissement"/>
     <div className="onboarding-head"><div><h1>Votre école, votre espace</h1><p className="muted">Un directeur crée son établissement, choisit un plan puis invite son équipe.</p></div><div className="stepper"><span className={step===1?'active':''}>1. Compte</span><span className={step===2?'active':''}>2. École & plan</span></div></div>
-    {step===1?<form onSubmit={e=>{e.preventDefault();if(!director.name||!director.email||director.password.length<6)return setMsg('Renseignez les champs et utilisez un mot de passe d’au moins 6 caractères.');setMsg('');setStep(2)}}><label>Nom du directeur<input required value={director.name} onChange={e=>setDirector({...director,name:e.target.value})} placeholder="Awa Ndiaye"/></label><label>Email<input required type="email" value={director.email} onChange={e=>setDirector({...director,email:e.target.value})} placeholder="direction@ecole.sn"/></label><label>Mot de passe<input required type="password" minLength={6} value={director.password} onChange={e=>setDirector({...director,password:e.target.value})}/></label>{msg&&<div className="alert error">{msg}</div>}<button className="primary full">Continuer</button><button type="button" className="link-btn" onClick={onBack}>← Retour connexion</button></form>:
-    <form onSubmit={submit}><label>Nom de l’école<input required value={school.name} onChange={e=>setSchool({...school,name:e.target.value})} placeholder="Lycée Horizon Dakar"/></label><label>Ville<input required value={school.city} onChange={e=>setSchool({...school,city:e.target.value})} placeholder="Dakar"/></label><div className="plan-picker"><button type="button" className={school.plan==='simple'?'selected':''} onClick={()=>setSchool({...school,plan:'simple'})}><b>Simple</b><strong>5 000 F / mois</strong><small>Fonctionnalités essentielles · annonces internes</small></button><button type="button" className={school.plan==='extra'?'selected':''} onClick={()=>setSchool({...school,plan:'extra'})}><b>Extra</b><strong>10 000 F / mois</strong><small>Modules avancés · sans pubs · automatisations</small></button></div><label>Code de parrainage (optionnel)<input value={school.referral} onChange={e=>setSchool({...school,referral:e.target.value.trim().toUpperCase()})} placeholder="EO-AB12CD"/></label><div className="referral-note">Parrainage : lorsqu’un autre directeur inscrit son école avec votre code et règle son premier abonnement, votre établissement peut bénéficier du plan Extra au prix du plan Simple selon les conditions du programme.</div>{msg&&<div className="alert">{msg}</div>}<button className="primary full" disabled={busy}>{busy?'Création…':'Créer mon école'}</button><button type="button" className="link-btn" onClick={()=>{setStep(1);setMsg('')}}>← Modifier le compte</button></form>}
+    {step===1?<form onSubmit={e=>{e.preventDefault();if(!director.name||!director.email||director.password.length<6)return setError(new Error('Renseignez les champs et utilisez un mot de passe d’au moins 6 caractères.'));setError(null);setStep(2)}}><label>Nom du directeur<input required value={director.name} onChange={e=>setDirector({...director,name:e.target.value})} placeholder="Awa Ndiaye"/></label><label>Email<input required type="email" value={director.email} onChange={e=>setDirector({...director,email:e.target.value})} placeholder="direction@ecole.sn"/></label><label>Mot de passe<input required type="password" minLength={6} value={director.password} onChange={e=>setDirector({...director,password:e.target.value})}/></label>{error?<ErrorNotice error={error}/>:null}{msg&&<div className="alert">{msg}</div>}<button className="primary full">Continuer</button><button type="button" className="link-btn" onClick={onBack}>← Retour connexion</button></form>:
+    <form onSubmit={submit}><label>Nom de l’école<input required value={school.name} onChange={e=>setSchool({...school,name:e.target.value})} placeholder="Lycée Horizon Dakar"/></label><label>Ville<input required value={school.city} onChange={e=>setSchool({...school,city:e.target.value})} placeholder="Dakar"/></label><div className="plan-picker"><button type="button" className={school.plan==='simple'?'selected':''} onClick={()=>setSchool({...school,plan:'simple'})}><b>Simple</b><strong>5 000 F / mois</strong><small>Fonctionnalités essentielles · annonces internes</small></button><button type="button" className={school.plan==='extra'?'selected':''} onClick={()=>setSchool({...school,plan:'extra'})}><b>Extra</b><strong>10 000 F / mois</strong><small>Modules avancés · sans pubs · automatisations</small></button></div><label>Code de parrainage (optionnel)<input value={school.referral} onChange={e=>setSchool({...school,referral:e.target.value.trim().toUpperCase()})} placeholder="EO-AB12CD"/></label><div className="referral-note">Parrainage : lorsqu’un autre directeur inscrit son école avec votre code et règle son premier abonnement, votre établissement peut bénéficier du plan Extra au prix du plan Simple selon les conditions du programme.</div>{error?<ErrorNotice error={error}/>:null}<div className={'alert'+(created?' success':'')} role="status">{msg||(busy?'Création de votre établissement…':'Renseignez votre établissement pour créer son espace.')}</div><button className="primary full" disabled={busy}>{busy?'Création…':created?'Continuer':'Créer mon école'}</button>{!created&&<button type="button" className="link-btn" onClick={()=>{setStep(1);setMsg('');setError(null)}}>← Modifier le compte</button>}</form>}
   </div></main>
 }
 
@@ -531,6 +615,9 @@ function App(){
   const [orderMsg,setOrderMsg]=useState('')
   const [data,setData]=useState<AppData>({profile:null,studentId:null,school:null,subscription:null,referral:null,grades:[],schedule:[],payments:[],points:[],foodItems:[],orders:[],rewards:[],loading:true,error:null})
   const hydratedTabs=useRef<Set<string>>(new Set())
+  // Compteur de relance manuelle : le bouton « Réessayer » d'une erreur de chargement
+  // rejoue l'effet de chargement sans avoir à recharger toute la page.
+  const [reloadToken,setReloadToken]=useState(0)
   const [hydratingTab,setHydratingTab]=useState<'food'|'rewards'|'grades'|'schedule'|'payments'|null>(null)
 
   useEffect(()=>{localStorage.setItem('ecole-os-mode',mode)},[mode])
@@ -566,10 +653,12 @@ function App(){
     let alive=true
     if(mode==='demo'){
       setPlatformAdmin(role==='admin')
+      setTechnicalErrorsVisible(role==='admin')
       return()=>{alive=false}
     }
     if(!session?.user){
       setPlatformAdmin(false)
+      setTechnicalErrorsVisible(false)
       return()=>{alive=false}
     }
     // Le contrôle serveur de /api/admin/[action] reste la vraie barrière de sécurité.
@@ -583,7 +672,8 @@ function App(){
     const allowed=!!email&&configured.includes(email)
     if(alive){
       setPlatformAdmin(allowed)
-      if(allowed)setOwnerDevice(true)
+      // Seuls les administrateurs de la plateforme voient le détail technique des erreurs.
+      setTechnicalErrorsVisible(allowed)
     }
     return()=>{alive=false}
   },[mode,role,session?.user?.email])
@@ -622,7 +712,7 @@ function App(){
     }
     load()
     return()=>{alive=false}
-  },[mode,session?.user?.id])
+  },[mode,session?.user?.id,reloadToken])
 
   // ⚠ Tous les hooks doivent être appelés AVANT le moindre `return` : sinon React plante
   // (« Rendered more hooks than during the previous render ») dès que la session change → page blanche.
@@ -722,15 +812,16 @@ function App(){
         }
       }catch(error:any){
         hydratedTabs.current.delete(key)
-        if(alive){setHydratingTab(null);setData(d=>({...d,error:error?.message||`Impossible de charger ${key}.`}))}
+        if(alive){setHydratingTab(null);setData(d=>({...d,error:errorMessage(error,`Impossible de charger ${key}.`)}))}
       } finally {
         if(alive)setHydratingTab(current=>current===key?null:current)
       }
     })()
     return()=>{alive=false}
-  },[mode,tab,session?.user?.id,role,data.profile?.role,data.studentId,data.homePending])
+  },[mode,tab,session?.user?.id,role,data.profile?.role,data.studentId,data.homePending?.length])
+  const reload=()=>setReloadToken(t=>t+1)
   function enterDemo(r:Role){try{sessionStorage.setItem('ecole-os-demo-role',r)}catch{}setCart({});setOrderMsg('');setTab('home');setRole(r);setMode('demo')}
-  if(schoolSignup)return <SchoolOnboarding onBack={()=>setSchoolSignup(false)}/>
+  if(schoolSignup)return <SchoolOnboarding onBack={()=>setSchoolSignup(false)} onDone={()=>{setSchoolSignup(false);setTab('home')}}/>
   if(mode==='live'&&!session)return <Login onSchool={()=>setSchoolSignup(true)} onDemo={enterDemo}/>
   const profileName=data.profile?.full_name||session?.user?.user_metadata?.full_name||session?.user?.email?.split('@')[0]||'Utilisateur'
   const count=Object.values(cart).reduce<number>((a,b)=>a+Number(b),0)
@@ -746,7 +837,7 @@ function App(){
     const token=session?.access_token
     const res=await fetch('/api/wave/checkout',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({type:'food',items,pickup_date:isoDate(new Date()),pickup_slot:'12:30–12:40'})})
     const result=await res.json()
-    if(!res.ok){setOrderMsg(result.error||'Erreur de paiement');return}
+    if(!res.ok){setOrderMsg(errorMessage(result.error||new Error(`HTTP ${res.status}`),'Impossible de créer le paiement.'));return}
     window.location.href=result.wave_launch_url
   }
   function switchMode(next:Mode){if(next==='live'){try{sessionStorage.removeItem('ecole-os-demo-role')}catch{}}setMode(next);setTab('home');setCart({});setOrderMsg('');setPlatformAdmin(next==='demo'&&role==='admin');if(next==='live')setRole('student')}
@@ -770,7 +861,7 @@ function App(){
       <header className="topbar"><button className="mobile-menu" aria-label="Ouvrir le menu" onClick={()=>setMenuOpen(v=>!v)}>{menuOpen?<X/>:<Menu/>}</button><h2>{nav.find(n=>n[0]===tab)?.[1]}</h2><time className="today">{frToday()}</time><div className="avatar" aria-hidden="true">{firstLetters(profileName)}</div></header>
       <div className="content">
         {data.loading&&<div className="skeleton" role="status" aria-label="Chargement de votre espace"><i/><i/><i/></div>}
-        {data.error&&<div className="alert error">{data.error}</div>}
+        {data.error&&<ErrorNotice error={data.error} onRetry={reload}/>}
         {!data.loading&&<>
           {tab==='home'&&<Home role={role} mode={mode} name={profileName} data={data} setTab={setTab}/>} 
           {tab==='food'&&hydratingTab==='food'&&<ScreenFallback/>}{tab==='food'&&hydratingTab!=='food'&&<React.Suspense fallback={<ScreenFallback/>}><FoodScreen role={role} mode={mode} data={data} cart={cart} setCart={setCart} checkout={checkout} message={orderMsg}/></React.Suspense>} 
@@ -841,7 +932,6 @@ function Home({role,mode,name,data,setTab}:{role:Role,mode:Mode,name:string,data
 }
 
 
-applyOwnerParam()
 try{sessionStorage.removeItem(STALE_RELOAD_KEY)}catch{/* stockage indisponible */}
 
 // Enregistre le service worker et vérifie régulièrement les mises à jour. Sans cet appel explicite,
@@ -861,6 +951,9 @@ if(import.meta.env.MODE!=='android')import('virtual:pwa-register').then(({regist
   })
 }).catch(()=>{/* PWA indisponible (ex. hors production) : l'app fonctionne normalement sans elle */})
 
-createRoot(document.getElementById('root')!).render(<ErrorBoundary><App/>{import.meta.env.MODE!=='android'&&<><Analytics beforeSend={skipOwnerVisits}/><SpeedInsights beforeSend={skipOwnerVisits}/></>}</ErrorBoundary>)
+// Vercel Analytics / Speed Insights ont été retirés : ils n'apportaient rien de visible
+// pour les utilisateurs, et dans le WebView Android leurs requêtes /_vercel/* tombaient sur
+// une 404 (bloquées par le shell), ce qui polluait la console sans aucune mesure récupérée.
+createRoot(document.getElementById('root')!).render(<ErrorBoundary><App/></ErrorBoundary>)
 
 
