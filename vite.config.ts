@@ -2,10 +2,15 @@ import {defineConfig} from 'vite'
 import react from '@vitejs/plugin-react'
 import {VitePWA} from 'vite-plugin-pwa'
 
-export default defineConfig({
-  plugins: [
-    react(),
-    VitePWA({
+export default defineConfig(({ mode }) => {
+  const androidBuild = mode === 'android'
+
+  return {
+    plugins: [
+      react(),
+      VitePWA({
+      // The Android shell owns updates; never register a service worker over its server origin.
+      disable: androidBuild,
       registerType: 'autoUpdate',
       // On réutilise le manifest déjà présent dans public/manifest.webmanifest plutôt que d'en générer un second.
       manifest: false,
@@ -25,17 +30,18 @@ export default defineConfig({
           },
         ],
       },
-    }),
-  ],
-  build: {
-    cssCodeSplit: true,
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          react: ['react', 'react-dom'],
-          supabase: ['@supabase/supabase-js'],
+      }),
+    ],
+    build: {
+      cssCodeSplit: true,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            react: ['react', 'react-dom'],
+            supabase: ['@supabase/supabase-js'],
+          },
         },
       },
     },
-  },
+  }
 })

@@ -116,14 +116,10 @@ const demoBlurb:Record<Role,string>={student:'Cours, notes, Food, points',parent
 const demoIcons:Record<Role,React.ElementType>={student:GraduationCap,parent:Users,teacher:BookOpen,admin:ClipboardList,director:Landmark,cafeteria:UtensilsCrossed}
 const readDemoRole=():Role|null=>{try{const r=sessionStorage.getItem('ecole-os-demo-role') as Role|null;return r&&r in roleLabels?r:null}catch{return null}}
 
-const demoCredentials:Record<Role,{email:string;password:string}>= {
-  student:{email:'eleve@demo.ecole-os.local',password:'demo1234'},
-  parent:{email:'parent@demo.ecole-os.local',password:'demo1234'},
-  teacher:{email:'prof@demo.ecole-os.local',password:'demo1234'},
-  admin:{email:'admin@demo.ecole-os.local',password:'demo1234'},
-  director:{email:'directeur@demo.ecole-os.local',password:'demo1234'},
-  cafeteria:{email:'cantine@demo.ecole-os.local',password:'demo1234'},
-}
+// Les 6 rôles accessibles en démo, dans l'ordre d'affichage. Aucun identifiant embarqué :
+// l'accès se fait uniquement via le bouton correspondant (onDemo), jamais par un formulaire
+// email/mot de passe, pour qu'aucun identifiant de démonstration n'apparaisse dans le code livré.
+const demoRoleOrder:Role[]=['student','parent','teacher','admin','director','cafeteria']
 
 function LogoMark({size=38}:{size?:number}){return <svg className="logo-mark-svg" width={size} height={size} viewBox="0 0 38 38" aria-hidden="true"><rect x="4.5" y="4.5" width="29" height="29" rx="8" fill="none" stroke="currentColor" strokeWidth="2.2"/><path d="M12 13.5h14M12 19h9M12 24.5h14" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round"/><circle cx="27" cy="19" r="2.15" fill="currentColor"/><path d="M25.2 9.3h3.7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>}
 function Brand({sub}:{sub?:string}){return <div className="brand"><div className="brand-mark" aria-hidden="true"><LogoMark/></div><div><b>École OS</b>{sub&&<span>{sub}</span>}</div></div>}
@@ -169,9 +165,8 @@ function Login({onSchool,onDemo}:{onSchool:()=>void,onDemo:(r:Role)=>void}){
     e.preventDefault()
     setLoading(true)
     setError('')
-    // Les identifiants de démonstration ouvrent l’espace démo : aucun compte Auth n’est nécessaire.
-    const demoRole=(Object.keys(demoCredentials) as Role[]).find(r=>demoCredentials[r].email===email.trim().toLowerCase()&&demoCredentials[r].password===password)
-    if(demoRole){setLoading(false);onDemo(demoRole);return}
+    // L'accès démo se fait uniquement via les boutons "Espaces de démonstration" ci-dessous (onDemo),
+    // jamais par email/mot de passe : aucun identifiant de démonstration n'est embarqué dans le code.
 
     const supabase=await loadSupabase()
     const {data,error}=await supabase.auth.signInWithPassword({email:email.trim(),password})
@@ -239,7 +234,7 @@ function Login({onSchool,onDemo}:{onSchool:()=>void,onDemo:(r:Role)=>void}){
           <div className="os-map-line os-map-line-b"/>
           <div className="os-map-line os-map-line-c"/>
           <div className="os-map-list">
-            {(Object.keys(demoCredentials) as Role[]).map((r,index)=>{
+            {demoRoleOrder.map((r,index)=>{
               const I=demoIcons[r]
               return <button type="button" key={r} className="os-space" onClick={()=>onDemo(r)}>
                 <span className="os-space-index">{String(index+1).padStart(2,'0')}</span>
@@ -854,7 +849,7 @@ try{sessionStorage.removeItem(STALE_RELOAD_KEY)}catch{/* stockage indisponible *
 // peut rester invisible longtemps pour un onglet resté ouvert, avec le risque observé ci-dessus (un chunk
 // chargé à la demande qui n'existe plus sur le serveur). registerType:'autoUpdate' fait déjà recharger la
 // page dès qu'une mise à jour est détectée ; ce sondage périodique déclenche la détection elle-même.
-import('virtual:pwa-register').then(({registerSW})=>{
+if(import.meta.env.MODE!=='android')import('virtual:pwa-register').then(({registerSW})=>{
   const intervalMs=15*60*1000 // Une seule vérification périodique : pas de double fetch du service worker.
   registerSW({
     onRegisteredSW(_swUrl,registration){
@@ -866,6 +861,6 @@ import('virtual:pwa-register').then(({registerSW})=>{
   })
 }).catch(()=>{/* PWA indisponible (ex. hors production) : l'app fonctionne normalement sans elle */})
 
-createRoot(document.getElementById('root')!).render(<ErrorBoundary><App/><Analytics beforeSend={skipOwnerVisits}/><SpeedInsights beforeSend={skipOwnerVisits}/></ErrorBoundary>)
+createRoot(document.getElementById('root')!).render(<ErrorBoundary><App/>{import.meta.env.MODE!=='android'&&<><Analytics beforeSend={skipOwnerVisits}/><SpeedInsights beforeSend={skipOwnerVisits}/></>}</ErrorBoundary>)
 
 

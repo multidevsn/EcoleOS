@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build && npm run build:api",
+    "build:android": "tsc -b && vite build --mode android && npm run build:api",
     "preview": "vite preview",
     "build:api": "tsc -p tsconfig.api.json --noEmit"
   },

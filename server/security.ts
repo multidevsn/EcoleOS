@@ -10,7 +10,8 @@ function adminClient(){
 }
 
 async function hash(value:string){
-  const salt=env('SECURITY_HASH_SALT')||'ecole-os-security-default-salt'
+  const salt=env('SECURITY_HASH_SALT')
+  if(!salt)throw new Error('SECURITY_HASH_SALT is required for security telemetry.')
   const input=new TextEncoder().encode(`${salt}:${value}`)
   const digest=await crypto.subtle.digest('SHA-256',input)
   return Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('')
@@ -70,6 +71,11 @@ export async function recordSecurityEvent(req:VercelRequest,input:{eventType:str
 type Handler=(req:VercelRequest,res:VercelResponse,meta?:{requestId:string;route:string})=>Promise<unknown>|unknown
 
 export function withSecurity(route:string,handler:Handler){
+  const recordFailure=(req:VercelRequest,res:VercelResponse,rid:string,started:number)=>{
+    const status=res.statusCode
+    if(status!==401&&status!==403&&status<500)return
+    void recordSecurityEvent(req,{eventType:status>=500?'api_error':status===401?'auth_denied':'access_denied',severity:status>=500?'critical':'warning',statusCode:status,route,requestId:rid,metadata:{duration_ms:Date.now()-started}})
+  }
   return async (req:VercelRequest,res:VercelResponse)=>{
     const rid=requestId(req)
     const started=Date.now()
@@ -78,7 +84,7 @@ export function withSecurity(route:string,handler:Handler){
     ;(res as any).end=(...args:any[])=>{
       if(!finalized){
         finalized=true
-        void recordSecurityEvent(req,{eventType:res.statusCode>=500?'api_error':res.statusCode===401?'auth_denied':res.statusCode===403?'access_denied':'api_response',severity:res.statusCode>=500?'critical':(res.statusCode===401||res.statusCode===403)?'warning':'info',statusCode:res.statusCode,route,requestId:rid,metadata:{duration_ms:Date.now()-started}})
+        recordFailure(req,res,rid,started)
       }
       return originalEnd(...args)
     }
@@ -87,7 +93,7 @@ export function withSecurity(route:string,handler:Handler){
     }finally{
       if(!finalized){
         finalized=true
-        void recordSecurityEvent(req,{eventType:res.statusCode>=500?'api_error':res.statusCode===401?'auth_denied':res.statusCode===403?'access_denied':'api_response',severity:res.statusCode>=500?'critical':(res.statusCode===401||res.statusCode===403)?'warning':'info',statusCode:res.statusCode,route,requestId:rid,metadata:{duration_ms:Date.now()-started}})
+        recordFailure(req,res,rid,started)
       }
     }
   }
