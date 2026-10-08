@@ -98,6 +98,9 @@ Scripts utiles :
 - `supabase/schools-billing-referrals.sql`
 - `supabase/role-permissions.sql`
 - `supabase/live-account-seed.sql`
+- `supabase/migrations/20261008_food_catalog_bootstrap.sql` — répare le catalogue Food, ses règles de lecture et les plats de démonstration.
+
+Pour corriger un serveur qui affiche « Cette fonctionnalité n’est pas encore activée » dans Food, exécutez cette migration dans le SQL Editor Supabase. Le mode démo utilise désormais un petit menu local si le catalogue ou l’historique de démo manque, sans bloquer l’interface.
 
 RLS est activé sur les tables exposées. Les vues de dashboard utilisent `security_invoker=true`.
 

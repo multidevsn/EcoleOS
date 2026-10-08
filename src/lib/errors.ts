@@ -33,6 +33,7 @@ export type DescribedError = {
 }
 
 const STALE_CHUNK = /Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed/i
+const MISSING_SCHEMA = /does not exist|could not find the (?:table|function|column)|relation \"|PGRST205|PGRST202|42P01|42703|42883/i
 
 type Rule = { match: RegExp; kind: ErrorKind; message: string; retryable?: boolean }
 
@@ -62,7 +63,7 @@ const RULES: Rule[] = [
   { match: /row-level security|row level security|permission denied|access denied|unauthorized|JWT claims|new row violates/i, kind: 'permission', message: 'Votre compte n’a pas le droit d’accéder à cette information. Si vous pensez que c’est une erreur, contactez l’administration de votre établissement.' },
 
   // --- Schéma / migrations non appliquées : cas très fréquent en démo ou après un import partiel ---
-  { match: /does not exist|could not find the (?:table|function|column)|relation "|PGRST205|PGRST202|42P01|42703|42883/i, kind: 'missing_schema', message: 'Cette fonctionnalité n’est pas encore activée sur ce serveur. L’administrateur doit appliquer la migration de base de données correspondante.', retryable: true },
+  { match: MISSING_SCHEMA, kind: 'missing_schema', message: 'Cette fonctionnalité n’est pas encore activée sur ce serveur. L’administrateur doit appliquer la migration de base de données correspondante.', retryable: true },
 
   // --- Contraintes ---
   { match: /duplicate key value|unique constraint|23505/i, kind: 'validation', message: 'Cet élément existe déjà.' },
@@ -92,6 +93,11 @@ function rawMessage(error: unknown): string {
   } catch {
     return String(error)
   }
+}
+
+/** Distinguishes missing database objects from network and permission failures for safe fallbacks. */
+export function isMissingSchemaError(error: unknown): boolean {
+  return MISSING_SCHEMA.test(rawMessage(error))
 }
 
 const GENERIC: Record<ErrorKind, string> = {
