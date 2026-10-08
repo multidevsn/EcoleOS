@@ -1,19 +1,9 @@
 import React from 'react'
+import './styles/app.css'
 import { createRoot } from 'react-dom/client'
-import { AuthProvider, useAuthContext } from './app/providers/AuthProvider'
+import { AuthProvider } from './app/providers/AuthProvider'
 import { DataProvider } from './app/providers/DataProvider'
-import { LoginScreen } from './features/auth/LoginScreen'
-import { HomeScreen } from './features/home/HomeScreen'
-
-function AppRoot() {
-  const { session } = useAuthContext()
-
-  return (
-    <div className="app">
-      {session ? <HomeScreen /> : <LoginScreen />}
-    </div>
-  )
-}
+import { AppRoot } from './app/AppRoot'
 
 function Bootstrap() {
   return (
