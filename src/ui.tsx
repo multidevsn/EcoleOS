@@ -28,7 +28,10 @@ export function ErrorNotice({error,fallback,onRetry,variant='error',className}:{
 }){
   if(!error)return null
   const described=describeError(error,fallback)
-  const showTechnical=canSeeTechnicalErrors()&&described.technical.length>0
+  // A translated message may be passed through this component a second time by an outer
+  // screen. Don't render that same user-facing sentence again as a fake technical detail.
+  const hasDistinctTechnicalDetails=described.technical.trim().length>0&&described.technical.trim()!==described.message.trim()
+  const showTechnical=canSeeTechnicalErrors()&&hasDistinctTechnicalDetails
   return <div className={'alert '+(variant==='error'?'error':'')+(className?' '+className:'')} role={variant==='error'?'alert':undefined}>
     <div className="alert-body">
       <AlertTriangle size={17} aria-hidden="true"/>

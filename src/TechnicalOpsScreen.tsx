@@ -1,29 +1,31 @@
 import React, {useEffect, useState} from 'react'
 import {Activity, BarChart3, CircleDollarSign, Gauge, RefreshCw, School, ServerCog, ShieldCheck, Users, WalletCards} from 'lucide-react'
 import {Mode, KpiStrip, MiniBar, Empty, shortMoney, frToday, fr, shortDate} from './shared'
+import {ErrorNotice} from './ui'
 
 export function TechnicalOps({mode,session}:{mode:Mode,session:any}){
-  const [loading,setLoading]=useState(true),[syncing,setSyncing]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[payload,setPayload]=useState<any|null>(null)
+  const [loading,setLoading]=useState(true),[syncing,setSyncing]=useState(false),[error,setError]=useState<unknown>(null),[retry,setRetry]=useState<(() => void)|null>(null),[notice,setNotice]=useState(''),[payload,setPayload]=useState<any|null>(null)
   async function load(){
+    setError(null);setRetry(null)
     if(mode==='demo'){
       setPayload({kpis:{schools:12,users:1860,active_subscriptions:10,projected_revenue_xof:75000,estimated_cost_xof:28600,actual_provider_cost_xof:31450,projected_margin_xof:43550,avg_users_per_school:155,past_due_cycles:1},cycles:[{school_id:'demo',amount_xof:12500,estimated_cost_xof:4200,provider_cost_xof:4360,cost_basis:'provider_allocation',margin_xof:8140,active_users:230,status:'due'}],cost_rules:[{service:'Supabase',metric:'active_users',label:'Infrastructure / utilisateur actif',fixed_monthly_xof:0,included_units:100,unit_cost_xof:20},{service:'Vercel',metric:'deployments',label:'Hébergement / déploiement',fixed_monthly_xof:0,included_units:20,unit_cost_xof:50},{service:'Notifications',metric:'messages',label:'Emails / SMS',fixed_monthly_xof:0,included_units:1000,unit_cost_xof:2}],provider_costs:[{provider:'vercel',amount:8.42,currency:'USD',amount_xof:5200,status:'ok',basis:'provider_reported',units:{charge_records:18},fetched_at:new Date().toISOString()},{provider:'supabase',amount:18.4,currency:'USD',amount_xof:11200,status:'partial',basis:'usage_derived',units:{projects:1,plan:'pro'},fetched_at:new Date().toISOString()},],events:[{severity:'info',event_type:'provider_cost_sync',message:'Coûts fournisseurs synchronisés automatiquement.',created_at:new Date().toISOString()},{severity:'warning',event_type:'usage_threshold',message:'1 établissement approche de son plafond.',created_at:new Date(Date.now()-3600000).toISOString()}],autopilot:{enabled:true,mode:'usage-aware',policy:'Simulation démo'}})
       setLoading(false);return
     }
     if(!session?.access_token){setLoading(false);return}
-    setLoading(true);setError('')
-    try{const res=await fetch('/api/admin/tech',{headers:{Authorization:`Bearer ${session.access_token}`}});const json=await res.json();if(!res.ok)throw new Error(json.error||'Dashboard technique indisponible.');setPayload(json)}catch(e:any){setError(e?.message||'Erreur de chargement.')}finally{setLoading(false)}
+    setLoading(true)
+    try{const res=await fetch('/api/admin/tech',{headers:{Authorization:`Bearer ${session.access_token}`}});const json=await res.json();if(!res.ok)throw new Error(json.error||'Dashboard technique indisponible.');setPayload(json)}catch(e){setError(e);setRetry(()=>load)}finally{setLoading(false)}
   }
   async function syncProviders(){
     if(mode==='demo'){setNotice('Mode démo : synchronisation fournisseur simulée.');return}
     if(!session?.access_token)return
-    setSyncing(true);setError('');setNotice('Synchronisation des coûts fournisseurs…')
+    setSyncing(true);setError(null);setRetry(null);setNotice('Synchronisation des coûts fournisseurs…')
     try{
       const res=await fetch('/api/admin/provider-costs',{method:'POST',headers:{Authorization:`Bearer ${session.access_token}`}})
       const json=await res.json()
       if(!res.ok)throw new Error(json.error||'Synchronisation impossible.')
       setNotice('Coûts fournisseurs actualisés.')
       await load()
-    }catch(e:any){setError(e?.message||'Erreur de synchronisation.')}finally{setSyncing(false)}
+    }catch(e){setError(e);setRetry(()=>syncProviders)}finally{setSyncing(false)}
   }
   useEffect(()=>{load()},[mode,session?.access_token])
   const k=payload?.kpis
@@ -36,7 +38,7 @@ export function TechnicalOps({mode,session}:{mode:Mode,session:any}){
   }
   return <>
     <div className="section-intro"><div><span className="eyebrow">ÉCOLE OS / CONTROL PLANE</span><h1>Ops & Autopilot.</h1><p>Surveillez la croissance, les coûts, les usages et le moteur de facturation sans piloter chaque école manuellement.</p></div><div className="ops-toolbar"><div className="ops-live-pill"><i/><span>Autopilot {payload?.autopilot?.enabled?'actif':'arrêté'}</span></div><button className="outline" onClick={syncProviders} disabled={syncing||mode==='live'&&!session?.access_token}><RefreshCw size={15} className={syncing?'spin':''}/>{syncing?'Synchronisation…':'Synchroniser les coûts'}</button></div></div>
-    {error&&<div className="alert error">{error}</div>}{notice&&<div className="alert">{notice}</div>}
+    {error?<ErrorNotice error={error} onRetry={retry||undefined}/>:null}{notice&&<div className="alert">{notice}</div>}
     {loading?<div className="skeleton"><i/><i/><i/></div>:<>
       <KpiStrip items={[
         {label:'Écoles',value:String(k?.schools||0),meta:'établissements onboardés',icon:<School/>},

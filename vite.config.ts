@@ -6,6 +6,11 @@ export default defineConfig(({ mode }) => {
   const androidBuild = mode === 'android'
 
   return {
+    server: {
+      host: '0.0.0.0',
+      // Arena previews use a per-session *.e2b.app host.
+      allowedHosts: ['.e2b.app'],
+    },
     plugins: [
       react(),
       VitePWA({
