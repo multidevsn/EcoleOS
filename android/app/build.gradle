@@ -20,7 +20,8 @@ def hasSigningConfig = ["storeFile", "storePassword", "keyAlias", "keyPassword"]
 
 android {
     namespace "org.ecoleos.app"
-    compileSdk 37
+    // API 36 stable, disponible sur les runners Ubuntu hébergés.
+    compileSdk 36
 
     defaultConfig {
         applicationId "org.ecoleos.app"

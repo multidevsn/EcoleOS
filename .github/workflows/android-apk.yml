@@ -32,9 +32,11 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v6
-      # L'image Ubuntu hébergée fournit ANDROID_HOME et sdkmanager.
-      - name: Installer la plateforme Android
-        run: sdkmanager --install 'platforms;android-37' 'build-tools;36.0.0'
+      # L'image Ubuntu 24.04 hébergée fournit l'API 36 et les build-tools.
+      - name: Vérifier le SDK Android du runner
+        run: |
+          test -f "$ANDROID_HOME/platforms/android-36/android.jar"
+          test -x "$ANDROID_HOME/build-tools/36.0.0/apksigner"
       - name: Construire les ressources WebView (sans service worker)
         run: |
           npm ci
