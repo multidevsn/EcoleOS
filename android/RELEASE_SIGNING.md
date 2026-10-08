@@ -10,9 +10,17 @@ Cette clé est l'identité définitive de votre app : Google Play (et toute
 réinstallation) exige la **même** clé pour chaque mise à jour future. Si vous
 la perdez, vous ne pourrez plus jamais mettre à jour l'app publiée sous le même
 `applicationId` — il faudra la republier comme une app neuve, avec une nouvelle
-fiche, perdant avis et installations. Pour cette raison, cette clé ne doit
-exister que sur votre machine (et une sauvegarde chiffrée que vous contrôlez),
-jamais générée ou stockée par un tiers.
+fiche, perdant avis et installations. Conservez l'original hors du dépôt, avec
+une sauvegarde chiffrée que vous contrôlez. Si vous utilisez GitHub Actions pour
+un release signé, GitHub aura nécessairement accès à une copie via ses secrets :
+réservez cet accès à un dépôt et des administrateurs de confiance.
+
+**Attention :** `keyPublish/keyPath` et `keyPublish/2Password.txt` ont déjà figuré
+dans l'historique Git du dépôt. Ne les utilisez pas pour le workflow. Considérez
+cette clé comme compromise si le dépôt a été partagé ; créez une nouvelle clé,
+retirez ces fichiers de l'historique avant de distribuer une nouvelle application.
+Si une version est déjà publiée, planifiez la rotation avec le canal de
+publication (notamment Play App Signing) : changer de clé peut empêcher les mises à jour.
 
 ## 1. Générer la clé (une seule fois, en local)
 
@@ -85,7 +93,32 @@ aapt dump badging app/build/outputs/apk/release/app-release.apk | grep versionNa
 
 Doit afficher `versionName='1.0.0'`, sans suffixe `-debug`.
 
-## 4. Sauvegarder la clé en lieu sûr
+## 4. Signer automatiquement avec GitHub Actions (facultatif)
+
+Dans **Settings → Secrets and variables → Actions → New repository secret**, ajoutez :
+
+| Secret | Contenu |
+|---|---|
+| `ANDROID_KEYSTORE_BASE64` | Le **nouveau** fichier `.jks` encodé en base64 sur une seule ligne |
+| `ANDROID_STORE_PASSWORD` | Mot de passe du keystore |
+| `ANDROID_KEY_ALIAS` | Alias de la clé (`ecole-os` dans l'exemple) |
+| `ANDROID_KEY_PASSWORD` | Mot de passe de la clé |
+
+Par exemple, en local : `base64 -w 0 android/app/ecole-os-release.jks` (Linux) ou
+`base64 < android/app/ecole-os-release.jks | tr -d '\n'` (macOS). Copiez le résultat
+directement dans le secret GitHub, **jamais dans un commit, une issue ou ce chat**.
+Un push d'un tag `v*` ou **Actions → APK Android → Run workflow → release** déclenche
+l'assemblage signé. Le workflow vérifie la signature avec `apksigner` avant de rendre
+l'APK téléchargeable dans les **Artifacts** de l'exécution (30 jours). Les secrets
+ne sont pas fournis aux builds de pull requests ; seuls les tags et lancements
+manuels peuvent demander un release. Protégez les droits d'écriture sur le dépôt
+et le déclenchement manuel si vous y stockez une clé de distribution.
+
+La version Android (`versionCode` et `versionName` dans `android/app/build.gradle`)
+doit être augmentée pour chaque nouvelle mise à jour publiée. Le workflow ne
+crée ni publication GitHub Release ni déploiement Play Store automatiquement.
+
+## 5. Sauvegarder la clé en lieu sûr
 
 Copiez `ecole-os-release.jks` et son mot de passe dans un gestionnaire de mots
 de passe ou un coffre chiffré (jamais par email ou chat en clair). Si vous

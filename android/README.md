@@ -31,6 +31,22 @@ Ce second garde-fou existe parce que l'APK distribué dans l'archive `.7z` avait
 construit avec `npm run build` : il embarquait le service worker PWA et Vercel Analytics,
 que le shell WebView bloque en 404.
 
+## Construire automatiquement sur GitHub
+
+Le workflow [APK Android](../.github/workflows/android-apk.yml) construit d'abord
+`npm run build:android`, puis l'APK. Il s'exécute à chaque push et pull request
+(APK **debug**) ; on peut aussi le lancer depuis **Actions → APK Android → Run workflow**.
+Dans l'exécution terminée, ouvrir la section **Artifacts** pour télécharger le zip
+`ecoleos-debug-…` contenant `app-debug.apk` (conservé 30 jours).
+
+Un tag `v*` ou l'option manuelle `release` construit **uniquement** un APK release signé,
+si les quatre secrets GitHub décrits dans [RELEASE_SIGNING.md](RELEASE_SIGNING.md) sont
+configurés. Sinon, le workflow échoue explicitement : il ne publie jamais un release
+signé avec la clé debug. L'APK signé se trouve dans `ecoleos-release-…`.
+Aucun APK n'est publié automatiquement comme GitHub Release ni envoyé sur Google Play.
+Ne distribuez **pas** l'APK debug : il est débogable et ne peut pas servir de mise à jour
+de l'application release (`applicationId` différent).
+
 ## Changer l'adresse du serveur
 
 L'origine par défaut est injectée au build, sans modifier le code Java :
