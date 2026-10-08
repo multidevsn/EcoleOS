@@ -1,5 +1,4 @@
-﻿import React,{useEffect,useMemo,useState} from 'react'
-import {supabase} from './lib/supabase'
+import React,{useEffect,useMemo,useState} from 'react'
 import {fr,shortMoney,shortDate,Empty,KpiStrip,MiniBar,Card} from './shared'
 import {Panel,OrdersTable,ErrorNotice} from './ui'
 import {errorMessage} from './lib/errors'
@@ -7,16 +6,50 @@ import {Mode} from './shared'
 import {Role,Theme,AppData,Profile,ScheduleRow,CommunityIdea,CommunitySurvey,IdeaStatus,avg,firstLetters,mention,money,roleLabels,roleLabel,foodCapabilities} from './appModel'
 import {BookOpen, CalendarDays, CheckCircle2, ChevronRight, CircleDollarSign, ClipboardList, Clock3, Gift, GraduationCap, KeyRound, Landmark, LogOut, Mail, Menu, Package, Save, School, ShieldCheck, ShoppingCart, FileUp, UserPlus, RefreshCw, Check, AlertTriangle, Sparkles, Star, UserRound, Users, UtensilsCrossed, WalletCards, X, Lightbulb, MessageSquarePlus, ThumbsUp, BarChart3, Palette, ListChecks, Gauge, Activity, ServerCog, MessageCircle, Megaphone, Send, Flag, ShieldAlert, Search, Info, UsersRound, LockKeyhole} from 'lucide-react'
 
+let supabaseModulePromise: Promise<typeof import('./lib/supabase')> | null = null
+async function loadSupabase(){
+  supabaseModulePromise ??= import('./lib/supabase')
+  return (await supabaseModulePromise).supabase
+}
+
 export function Food({role,mode,data,cart,setCart,checkout,message}:{role:Role,mode:Mode,data:AppData,cart:Record<string,number>,setCart:React.Dispatch<React.SetStateAction<Record<string,number>>>,checkout:()=>void,message:string}){
   const caps=foodCapabilities[role]
   const total=data.foodItems.reduce((sum,item)=>sum+item.price_xof*(cart[item.id]||0),0)
+  const demoNotice=mode==='demo'
+    ?<div className="demo-food-notice" role="note"><Info size={17}/><span>{caps.order?'Données fictives. La commande est simulée localement pour cette session ; aucun paiement réel ne sera effectué.':'Données fictives. Le menu est en lecture seule en mode démo ; aucune modification ni aucun paiement réel ne sera envoyé.'}</span></div>
+    :null
+
   if(caps.manageMenu) return <>
+    {demoNotice}
     <div className="section-intro"><div><h1>Gestion Food</h1><p>Cette interface est réservée à la cantine et à l'administration.</p></div><div className="pill">Personnel autorisé</div></div>
     <div className="grid stats"><Card icon={<Package/>} title="Commandes" value={String(data.orders.length)} meta="Commandes visibles"/><Card icon={<Clock3/>} title="En préparation" value={String(data.orders.filter(o=>o.status==='preparing').length)} meta="À traiter"/><Card icon={<ShoppingCart/>} title="Prêtes" value={String(data.orders.filter(o=>o.status==='ready').length)} meta="Retrait"/><Card icon={<CircleDollarSign/>} title="Ventes" value={shortMoney(data.orders.reduce((sum,o)=>sum+Number(o.total_xof),0))} meta="Commandes non annulées"/></div>
-    <div className="grid two"><Panel title="Commandes à traiter"><OrdersTable orders={data.orders.slice(0,20)}/></Panel><Panel title="Menu actuel"><div className="food-grid">{data.foodItems.map(item=><div className="food-card" key={item.id}><div className="food-img">{item.id==='burger'?'🍔':item.id==='sandwich'?'🥪':item.id==='pizza'?'🍕':'🥤'}</div><div><h3>{item.name}</h3><b>{money(item.price_xof)}</b><small>{item.active?'Disponible':'Indisponible'}</small></div><button className="outline" onClick={()=>alert('Action de gestion du menu à brancher au serveur.')}>Modifier</button></div>)}</div></Panel></div>
+    <div className="grid two"><Panel title="Commandes à traiter"><OrdersTable orders={data.orders.slice(0,20)}/></Panel><Panel title="Menu actuel"><div className="food-grid">{data.foodItems.map(item=><div className="food-card" key={item.id}><div className="food-img">{item.id==='burger'?'🍔':item.id==='sandwich'?'🥪':item.id==='pizza'?'🍕':'🥤'}</div><div><h3>{item.name}</h3><b>{money(item.price_xof)}</b><small>{item.active?'Disponible':'Indisponible'}</small></div><button className="outline" disabled={mode==='demo'} onClick={()=>alert('Action de gestion du menu à brancher au serveur.')}>{mode==='demo'?'Lecture seule':'Modifier'}</button></div>)}</div></Panel></div>
   </>
   if(!caps.order) return <div className="panel"><div className="empty">Food n'est pas disponible pour votre rôle.</div></div>
-  return <><div className="section-intro"><div><h1>Précommande Food</h1><p>Commandez avant la pause et récupérez le repas au créneau choisi.</p></div><div className="pill">Retrait · 12:30–12:40</div></div><div className="food-layout"><div><div className="food-grid">{data.foodItems.map(item=><div className="food-card" key={item.id}><div className="food-img">{item.id==='burger'?'🍔':item.id==='sandwich'?'🥪':item.id==='pizza'?'🍕':'🥤'}</div><div><h3>{item.name}</h3><b>{money(item.price_xof)}</b></div><div className="qty"><button onClick={()=>setCart(c=>({...c,[item.id]:Math.max(0,(c[item.id]||0)-1)}))}>−</button><span>{cart[item.id]||0}</span><button onClick={()=>setCart(c=>({...c,[item.id]:(c[item.id]||0)+1}))}>+</button></div></div>)}</div><Panel title="Mes commandes"><OrdersTable orders={data.orders.slice(0,8)}/></Panel></div><aside className="cart"><h3>{role==='parent'?'Commande de votre enfant':'Ma commande'}</h3>{data.foodItems.filter(item=>cart[item.id]).map(item=><div className="row" key={item.id}><span>{item.name} × {cart[item.id]}</span><b>{money(item.price_xof*cart[item.id])}</b></div>)}{!total&&<p className="muted">Ajoutez un plat pour commencer.</p>}<div className="total"><span>Total</span><strong>{money(total)}</strong></div><button className="primary full" disabled={!total} onClick={checkout}>{mode==='demo'?'Simuler la commande':'Payer avec Wave'}</button>{message&&<div className="alert">{message}</div>}<small className="muted">{mode==='demo'?'Simulation sans débit réel.':'La commande est validée dès que Wave confirme le paiement.'}</small></aside></div></>
+
+  return <>
+    <div className="section-intro"><div><h1>Précommande Food</h1><p>Commandez avant la pause et récupérez le repas au créneau choisi.</p></div><div className="pill">Retrait · 12:30–12:40</div></div>
+    {demoNotice}
+    <div className="food-layout">
+      <div>
+        <div className="food-grid">{data.foodItems.map(item=><div className="food-card" key={item.id}>
+          <div className="food-img">{item.id==='burger'?'🍔':item.id==='sandwich'?'🥪':item.id==='pizza'?'🍕':'🥤'}</div>
+          <div><h3>{item.name}</h3><b>{money(item.price_xof)}</b></div>
+          <div className="qty"><button aria-label={`Retirer un ${item.name}`} onClick={()=>setCart(c=>({...c,[item.id]:Math.max(0,(c[item.id]||0)-1)}))}>−</button><span>{cart[item.id]||0}</span><button aria-label={`Ajouter un ${item.name}`} onClick={()=>setCart(c=>({...c,[item.id]:(c[item.id]||0)+1}))}>+</button></div>
+        </div>)}</div>
+        <Panel title="Mes commandes"><OrdersTable orders={data.orders.slice(0,8)}/></Panel>
+      </div>
+      <aside className="cart">
+        <h3>{role==='parent'?'Commande de votre enfant':'Ma commande'}</h3>
+        {data.foodItems.filter(item=>cart[item.id]).map(item=><div className="row" key={item.id}><span>{item.name} × {cart[item.id]}</span><b>{money(item.price_xof*cart[item.id])}</b></div>)}
+        {!total&&<p className="muted">Ajoutez un plat pour commencer.</p>}
+        <div className="total"><span>Total</span><strong>{money(total)}</strong></div>
+        <button className="primary full" disabled={!total} onClick={checkout}>{mode==='demo'?'Simuler la commande':'Payer avec Wave'}</button>
+        {message&&<div className="alert">{message}</div>}
+        <small className="muted">{mode==='demo'?'Simulation locale uniquement, sans débit réel.':'La commande est validée dès que Wave confirme le paiement.'}</small>
+      </aside>
+    </div>
+  </>
 }
 
 export function Schedule({role,mode,data}:{role:Role,mode:Mode,data:AppData}){const todayNo=((new Date().getDay()+6)%7)+1;const byDay=useMemo(()=>{const grouped:Record<number,ScheduleRow[]>={};for(const row of data.schedule)(grouped[row.weekday]??=[]).push(row);return grouped},[data.schedule]);const days=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];return <><div className="section-intro"><div><h1>{role==='teacher'?'Vos cours de la semaine':'Votre semaine'}</h1><p>{role==='teacher'?'Les cours qui vous sont affectés, jour par jour.':'Vos cours et leurs salles, jour par jour.'}</p></div></div><div className="schedule-week">{days.map((day,i)=><section className={'panel'+(i+1===todayNo?' today-col':'')} key={day}><div className="panel-head"><h3>{day}</h3><small>{i+1===todayNo?'Aujourd’hui · ':''}{(byDay[i+1]||[]).length} cours</small></div>{(byDay[i+1]||[]).length?(byDay[i+1]||[]).map(x=><div className="slot" key={x.id}><div className="time">{x.starts_at.slice(0,5)}</div><div><b>{x.subject}</b><span>{role==='teacher'?`${x.class_name} · `:''}jusqu’à {x.ends_at.slice(0,5)}</span></div><span className="status">{x.room}</span></div>):<Empty text="Aucun cours"/>}</section>)}</div>{mode==='demo'&&<div className="free"><b>Salles indicatives libres</b><span>A03 · A07 · C12 · Lab 1</span></div>}</>}
@@ -170,6 +203,7 @@ export function DirectorBilling({mode,data,session}:{mode:Mode,data:AppData,sess
   async function loadCycle(){
     if(mode==='demo'){setCycle({status:'due',amount_xof:6360,active_users:168,included_users:100,overage_users:68,period_start:new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().slice(0,10)});return}
     if(!data.school?.id)return
+    const supabase=await loadSupabase()
     const {data:rows,error}=await supabase.from('billing_cycles').select('id,status,amount_xof,active_users,included_users,overage_users,period_start,period_end,provider_checkout_url').eq('school_id',data.school.id).order('period_start',{ascending:false}).limit(1)
     if(!error)setCycle(rows?.[0]||null)
   }
@@ -240,6 +274,7 @@ export function Account({role,mode,data,session,theme,onThemeChange,onSaved}:{ro
     const clean=name.trim()
     if(clean.length<2){setError(new Error('Le nom doit contenir au moins 2 caractères.'));setBusy(false);return}
     if(demo){setMsg('Mode démo : le profil est consultable mais reste en lecture seule.');setBusy(false);return}
+    const supabase=await loadSupabase()
     const {error:dbError}=await supabase.from('profiles').update({full_name:clean}).eq('id',session.user.id)
     if(dbError){setError(dbError);setBusy(false);return}
     const {error:authError}=await supabase.auth.updateUser({data:{full_name:clean}})
@@ -253,6 +288,7 @@ export function Account({role,mode,data,session,theme,onThemeChange,onSaved}:{ro
     if(demo){setError(new Error('Le changement de mot de passe est disponible uniquement sur un compte réel.'));setBusy(false);return}
     if(newPassword.length<8){setError(new Error('Utilisez au moins 8 caractères pour le nouveau mot de passe.'));setBusy(false);return}
     if(newPassword!==confirmPassword){setError(new Error('Les deux mots de passe ne correspondent pas.'));setBusy(false);return}
+    const supabase=await loadSupabase()
     const {error:updateError}=await supabase.auth.updateUser({password:newPassword})
     if(updateError){setError(updateError);setBusy(false);return}
     setNewPassword('');setConfirmPassword('');setMsg('Mot de passe mis à jour.')

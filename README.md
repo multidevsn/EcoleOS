@@ -13,18 +13,9 @@ npm run dev
 
 ## Comptes démo
 
-La page de connexion propose 6 tuiles de démo : un clic ouvre l'espace du rôle, **sans compte Auth**, en lisant les tables `demo_*` (lecture seule). Saisir à la main les identifiants ci-dessous ouvre aussi la démo. Exécutez `supabase/demo-anon-fix.sql` pour que les récompenses s'affichent en démo.
+La page de connexion propose six boutons de démonstration : un clic ouvre l’espace correspondant **sans compte Auth et sans requête Supabase**. Les fixtures locales de `src/demoFixtures.ts` fournissent notamment le profil, la classe, les notes, l’emploi du temps, les paiements, les points et le menu Food. Aucun identifiant ou mot de passe de démonstration n’est nécessaire ; le formulaire email/mot de passe est réservé aux comptes réels.
 
-| Rôle | Email | Mot de passe |
-|---|---|---|
-| Élève | `eleve@demo.ecole-os.local` | `demo1234` |
-| Parent | `parent@demo.ecole-os.local` | `demo1234` |
-| Professeur | `prof@demo.ecole-os.local` | `demo1234` |
-| Administration | `admin@demo.ecole-os.local` | `demo1234` |
-| Directeur | `directeur@demo.ecole-os.local` | `demo1234` |
-| Cantine | `cantine@demo.ecole-os.local` | `demo1234` |
-
-Un compte démo ne permet pas de modifier les données métier. « Changer de compte » revient à l’écran de connexion et n’expose pas un sélecteur de rôle dans l’application.
+Les données sont fictives. Les actions proposées en démo sont simulées localement pour la session ; elles ne modifient pas les données d’un établissement et ne déclenchent aucun paiement réel. « Quitter la démo » ramène à l’écran de connexion.
 
 ## Compte réel de test V1
 
@@ -98,9 +89,9 @@ Scripts utiles :
 - `supabase/schools-billing-referrals.sql`
 - `supabase/role-permissions.sql`
 - `supabase/live-account-seed.sql`
-- `supabase/migrations/20261008_food_catalog_bootstrap.sql` — répare le catalogue Food, ses règles de lecture et les plats de démonstration.
+- `supabase/migrations/20261008_food_catalog_bootstrap.sql` — répare le catalogue Food Supabase utilisé par les comptes réels.
 
-Pour corriger un serveur qui affiche « Cette fonctionnalité n’est pas encore activée » dans Food, exécutez cette migration dans le SQL Editor Supabase. Le mode démo utilise désormais un petit menu local si le catalogue ou l’historique de démo manque, sans bloquer l’interface.
+Le mode démo ne lit plus les tables `demo_*` ni le catalogue Supabase : il utilise les fixtures locales de `src/demoFixtures.ts`. Cette migration Food ne doit donc pas être présentée comme un correctif du mode démo. Si un compte réel voit une erreur de schéma, il faut diagnostiquer la migration manquante côté Supabase ; l’interface ne masque pas les erreurs backend par des données fictives.
 
 RLS est activé sur les tables exposées. Les vues de dashboard utilisent `security_invoker=true`.
 

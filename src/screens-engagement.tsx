@@ -1,11 +1,16 @@
 import React,{useEffect,useMemo,useState} from 'react'
-import {supabase} from './lib/supabase'
 import {fr,shortDate,Empty} from './shared'
 import {Mode} from './shared'
 import {Role,AppData,Profile,CommunityIdea,CommunityMessage,CommunitySpace,CommunitySurvey,IdeaStatus,Reward,addDemoPoints,demoRoleIds,demoStorage,firstLetters,roleLabels,saveDemoStorage,demoIdeaSeed,demoSurveySeed,ideaStatusLabel,ideaStatusClass} from './appModel'
 import {errorMessage} from './lib/errors'
 import {BookOpen, CalendarDays, CheckCircle2, ChevronRight, CircleDollarSign, ClipboardList, Clock3, Gift, GraduationCap, KeyRound, Landmark, LogOut, Mail, Menu, Package, Save, School, ShieldCheck, ShoppingCart, FileUp, UserPlus, RefreshCw, Check, AlertTriangle, Sparkles, Star, UserRound, Users, UtensilsCrossed, WalletCards, X, Lightbulb, MessageSquarePlus, ThumbsUp, BarChart3, Palette, ListChecks, Gauge, Activity, ServerCog, MessageCircle, Megaphone, Send, Flag, ShieldAlert, Search, Info, UsersRound, LockKeyhole} from 'lucide-react'
 import {Panel,ErrorNotice} from './ui'
+
+let supabaseModulePromise: Promise<typeof import('./lib/supabase')> | null = null
+async function loadSupabase(){
+  supabaseModulePromise ??= import('./lib/supabase')
+  return (await supabaseModulePromise).supabase
+}
 
 export function Rewards({role,mode,data}:{role:Role,mode:Mode,data:AppData}){
   const userId=data.profile?.id||'anonymous';
@@ -32,6 +37,7 @@ export function Rewards({role,mode,data}:{role:Role,mode:Mode,data:AppData}){
         setExtra(Number(localStorage.getItem(`eos-demo-impact-extra-${userId}`)||0));
         setMsg(`Récompense demandée : ${reward.name}.`);
       }else{
+        const supabase=await loadSupabase()
         const {error}=await supabase.rpc('redeem_reward',{p_reward_id:reward.id});
         if(error)throw error;
         setMsg(`Échange enregistré : ${reward.name}.`);
@@ -64,6 +70,7 @@ export function Agora({role,mode,session,profile,schoolId}:{role:Role,mode:Mode,
   const authorName=profile?.full_name||roleLabels[role]
   const pageSize=40
   async function loadLiveIdeaPage(offset:number,append:boolean,activeSchoolId:string,activeUserId:string){
+    const supabase=await loadSupabase()
     const {data,error}=await supabase.from('community_ideas').select('id,title,description,author_name,role,status,vote_count,created_at').eq('school_id',activeSchoolId).order('created_at',{ascending:false}).order('id',{ascending:false}).range(offset,offset+pageSize)
     if(error)throw error
     const rows=(data||[]) as any[]
@@ -80,6 +87,7 @@ export function Agora({role,mode,session,profile,schoolId}:{role:Role,mode:Mode,
     setIdeasOffset(offset+pageRows.length)
   }
   async function loadLiveSurveyPage(offset:number,append:boolean,activeSchoolId:string,activeUserId:string){
+    const supabase=await loadSupabase()
     const {data,error}=await supabase.from('community_surveys').select('id,question,description,expires_at').eq('school_id',activeSchoolId).eq('active',true).order('created_at',{ascending:false}).order('id',{ascending:false}).range(offset,offset+pageSize)
     if(error)throw error
     const rows=(data||[]) as any[]
@@ -125,9 +133,9 @@ export function Agora({role,mode,session,profile,schoolId}:{role:Role,mode:Mode,
   },[mode,schoolId,userId])
   async function loadMoreIdeas(){if(loadingMoreIdeas||!hasMoreIdeas||mode!=='live'||!schoolId||!userId)return;setLoadingMoreIdeas(true);try{await loadLiveIdeaPage(ideasOffset,true,schoolId,userId)}catch(e:any){setMsg(errorMessage(e,'Impossible de charger les idées suivantes.'))}finally{setLoadingMoreIdeas(false)}}
   async function loadMoreSurveys(){if(loadingMoreSurveys||!hasMoreSurveys||mode!=='live'||!schoolId||!userId)return;setLoadingMoreSurveys(true);try{await loadLiveSurveyPage(surveysOffset,true,schoolId,userId)}catch(e:any){setMsg(errorMessage(e,'Impossible de charger les sondages suivants.'))}finally{setLoadingMoreSurveys(false)}}
-  async function submitIdea(e:React.FormEvent){e.preventDefault();const t=title.trim(),d=description.trim();if(t.length<8||d.length<12){setMsg('Donnez un titre clair et une description utile.');return}setBusy(true);setMsg('');try{if(mode==='demo'){const next:CommunityIdea={id:`idea-${Date.now()}`,title:t,description:d,author_name:authorName,role,status:'new',votes:0,created_at:new Date().toISOString()};const stored=demoStorage<CommunityIdea[]>('eos-demo-agora-ideas',demoIdeaSeed);saveDemoStorage('eos-demo-agora-ideas',[next,...stored]);setIdeas((x)=>[next,...x]);addDemoPoints(userId,10,'Idée proposée dans Agora');}else{const {data:ideaId,error}=await supabase.rpc('submit_community_idea',{p_title:t,p_description:d});if(error)throw error;if(!ideaId)throw new Error('Idée créée, mais impossible de récupérer son identifiant.');const {data:row,error:readError}=await supabase.from('community_ideas').select('id,title,description,author_name,role,status,vote_count,created_at').eq('id',ideaId).single();if(readError)throw readError;const created:CommunityIdea={id:row.id,title:row.title,description:row.description,author_name:row.author_name,role:row.role,status:row.status,votes:Number(row.vote_count||0),created_at:row.created_at,voted:false};setIdeas(current=>[created,...current.filter(x=>x.id!==created.id)]);setIdeasOffset(offset=>offset+1);window.dispatchEvent(new Event('eos-points-updated'))}setTitle('');setDescription('');setMsg('Idée envoyée. +10 points pour votre contribution.')}catch(e:any){setMsg(errorMessage(e,'Impossible d’envoyer cette idée.'))}finally{setBusy(false)}}
-  async function vote(id:string){const current=ideas.find(x=>x.id===id);if(!current||current.voted)return;try{if(mode==='demo'){const votes=demoStorage<string[]>(`eos-demo-votes-${userId}`,[]);if(votes.includes(id))return;saveDemoStorage(`eos-demo-votes-${userId}`,[id,...votes]);const stored=demoStorage<CommunityIdea[]>('eos-demo-agora-ideas',demoIdeaSeed).map(x=>x.id===id?{...x,votes:x.votes+1,voted:true}:x);saveDemoStorage('eos-demo-agora-ideas',stored);setIdeas(stored);addDemoPoints(userId,2,'Vote utile dans Agora');}else{const {error}=await supabase.rpc('vote_community_idea',{p_idea_id:id});if(error)throw error;setIdeas(x=>x.map(i=>i.id===id?{...i,votes:i.votes+1,voted:true}:i));window.dispatchEvent(new Event('eos-points-updated'))}}catch(e:any){setMsg(errorMessage(e,'Vote impossible.'))}}
-  async function answerSurvey(surveyId:string,optionId:string){const survey=surveys.find(x=>x.id===surveyId);if(!survey||survey.answer)return;try{if(mode==='demo'){const answers=demoStorage<Record<string,string>>(`eos-demo-survey-answers-${userId}`,{});answers[surveyId]=optionId;saveDemoStorage(`eos-demo-survey-answers-${userId}`,answers);const stored=demoStorage<CommunitySurvey[]>('eos-demo-agora-surveys',demoSurveySeed).map(s=>s.id===surveyId?{...s,options:s.options.map(o=>o.id===optionId?{...o,votes:o.votes+1}:o),answer:optionId}:s);saveDemoStorage('eos-demo-agora-surveys',stored);setSurveys(stored);addDemoPoints(userId,2,'Participation à un sondage');}else{const {error}=await supabase.rpc('respond_community_survey',{p_survey_id:surveyId,p_option_id:optionId});if(error)throw error;setSurveys(x=>x.map(s=>s.id===surveyId?{...s,answer:optionId,options:s.options.map(o=>o.id===optionId?{...o,votes:o.votes+1}:o)}:s));window.dispatchEvent(new Event('eos-points-updated'))}}catch(e:any){setMsg(errorMessage(e,'Réponse impossible.'))}}
+  async function submitIdea(e:React.FormEvent){e.preventDefault();const t=title.trim(),d=description.trim();if(t.length<8||d.length<12){setMsg('Donnez un titre clair et une description utile.');return}setBusy(true);setMsg('');try{if(mode==='demo'){const next:CommunityIdea={id:`idea-${Date.now()}`,title:t,description:d,author_name:authorName,role,status:'new',votes:0,created_at:new Date().toISOString()};const stored=demoStorage<CommunityIdea[]>('eos-demo-agora-ideas',demoIdeaSeed);saveDemoStorage('eos-demo-agora-ideas',[next,...stored]);setIdeas((x)=>[next,...x]);addDemoPoints(userId,10,'Idée proposée dans Agora');}else{const supabase=await loadSupabase();const {data:ideaId,error}=await supabase.rpc('submit_community_idea',{p_title:t,p_description:d});if(error)throw error;if(!ideaId)throw new Error('Idée créée, mais impossible de récupérer son identifiant.');const {data:row,error:readError}=await supabase.from('community_ideas').select('id,title,description,author_name,role,status,vote_count,created_at').eq('id',ideaId).single();if(readError)throw readError;const created:CommunityIdea={id:row.id,title:row.title,description:row.description,author_name:row.author_name,role:row.role,status:row.status,votes:Number(row.vote_count||0),created_at:row.created_at,voted:false};setIdeas(current=>[created,...current.filter(x=>x.id!==created.id)]);setIdeasOffset(offset=>offset+1);window.dispatchEvent(new Event('eos-points-updated'))}setTitle('');setDescription('');setMsg('Idée envoyée. +10 points pour votre contribution.')}catch(e:any){setMsg(errorMessage(e,'Impossible d’envoyer cette idée.'))}finally{setBusy(false)}}
+  async function vote(id:string){const current=ideas.find(x=>x.id===id);if(!current||current.voted)return;try{if(mode==='demo'){const votes=demoStorage<string[]>(`eos-demo-votes-${userId}`,[]);if(votes.includes(id))return;saveDemoStorage(`eos-demo-votes-${userId}`,[id,...votes]);const stored=demoStorage<CommunityIdea[]>('eos-demo-agora-ideas',demoIdeaSeed).map(x=>x.id===id?{...x,votes:x.votes+1,voted:true}:x);saveDemoStorage('eos-demo-agora-ideas',stored);setIdeas(stored);addDemoPoints(userId,2,'Vote utile dans Agora');}else{const supabase=await loadSupabase();const {error}=await supabase.rpc('vote_community_idea',{p_idea_id:id});if(error)throw error;setIdeas(x=>x.map(i=>i.id===id?{...i,votes:i.votes+1,voted:true}:i));window.dispatchEvent(new Event('eos-points-updated'))}}catch(e:any){setMsg(errorMessage(e,'Vote impossible.'))}}
+  async function answerSurvey(surveyId:string,optionId:string){const survey=surveys.find(x=>x.id===surveyId);if(!survey||survey.answer)return;try{if(mode==='demo'){const answers=demoStorage<Record<string,string>>(`eos-demo-survey-answers-${userId}`,{});answers[surveyId]=optionId;saveDemoStorage(`eos-demo-survey-answers-${userId}`,answers);const stored=demoStorage<CommunitySurvey[]>('eos-demo-agora-surveys',demoSurveySeed).map(s=>s.id===surveyId?{...s,options:s.options.map(o=>o.id===optionId?{...o,votes:o.votes+1}:o),answer:optionId}:s);saveDemoStorage('eos-demo-agora-surveys',stored);setSurveys(stored);addDemoPoints(userId,2,'Participation à un sondage');}else{const supabase=await loadSupabase();const {error}=await supabase.rpc('respond_community_survey',{p_survey_id:surveyId,p_option_id:optionId});if(error)throw error;setSurveys(x=>x.map(s=>s.id===surveyId?{...s,answer:optionId,options:s.options.map(o=>o.id===optionId?{...o,votes:o.votes+1}:o)}:s));window.dispatchEvent(new Event('eos-points-updated'))}}catch(e:any){setMsg(errorMessage(e,'Réponse impossible.'))}}
   return <><div className="section-intro"><div><span className="eyebrow">ÉCOLE OS / COMMUNAUTÉ</span><h1>Agora.</h1><p>Les idées qui améliorent l'école passent par ici : proposer, voter, voir ce qui avance.</p></div><span className="pill"><Sparkles size={15}/> +10 points par idée retenue</span></div><div className="agora-tabs"><button className={section==='ideas'?'active':''} onClick={()=>setSection('ideas')}><Lightbulb size={16}/>Idées</button><button className={section==='surveys'?'active':''} onClick={()=>setSection('surveys')}><BarChart3 size={16}/>Sondages</button><button className={section==='roadmap'?'active':''} onClick={()=>setSection('roadmap')}><ListChecks size={16}/>Feuille de route</button></div>{msg&&<div className="alert">{msg}</div>}{section==='ideas'&&<div className="agora-layout"><section className="panel"><div className="panel-head"><div><h3>Proposer une amélioration</h3><span className="panel-subtitle">Une idée courte, concrète et utile.</span></div><MessageSquarePlus size={18}/></div><form className="agora-form" onSubmit={submitIdea}><label>Titre<input value={title} onChange={e=>setTitle(e.target.value)} maxLength={110} placeholder="Ex. Calendrier commun parents / professeurs"/></label><label>Description<textarea value={description} onChange={e=>setDescription(e.target.value)} maxLength={420} placeholder="Pourquoi cette amélioration aiderait l'école ?" rows={4}/></label><button className="primary" disabled={busy}><Lightbulb size={16}/>{busy?'Envoi…':'Proposer mon idée'}</button></form></section><section className="panel"><div className="panel-head"><div><h3>Les idées de la communauté</h3><span className="panel-subtitle">Un vote par idée. Pas de classement des personnes.</span></div><ThumbsUp size={18}/></div><div className="idea-list">{ideas.length?ideas.map(x=><article className="idea-card" key={x.id}><div className="idea-head"><div><b>{x.title}</b><span>{x.description}</span></div><button className={`vote-btn${x.voted?' voted':''}`} disabled={x.voted} onClick={()=>vote(x.id)}><ThumbsUp size={15}/>{x.votes}</button></div><div className="idea-meta"><span className={`idea-status ${ideaStatusClass[x.status]}`}>{ideaStatusLabel[x.status]}</span><span>{roleLabels[x.role]} · {x.author_name}</span><span>{shortDate(x.created_at)}</span></div></article>):<Empty text="Aucune idée pour le moment."/>}</div></section><div className="agora-more">{hasMoreIdeas&&<button className="outline" type="button" onClick={()=>void loadMoreIdeas()} disabled={loadingMoreIdeas}>{loadingMoreIdeas?'Chargement…':'Charger plus d’idées'}</button>}</div></div>}{section==='surveys'&&<><div className="survey-list">{surveys.length?surveys.map(s=>{const total=s.options.reduce((n,o)=>n+o.votes,0);return <section className="panel survey-card" key={s.id}><div className="panel-head"><div><h3>{s.question}</h3><span className="panel-subtitle">{s.description}</span></div><BarChart3 size={18}/></div><div className="survey-options">{s.options.map(o=>{const pct=total?Math.round(o.votes/total*100):0;const selected=s.answer===o.id;return <button key={o.id} className={`survey-option${selected?' selected':''}`} disabled={!!s.answer} onClick={()=>answerSurvey(s.id,o.id)}><span className="survey-option-top"><b>{o.label}</b><small>{pct}%</small></span><span className="survey-bar"><i style={{width:`${pct}%`}}/></span></button>})}</div>{s.answer?<small className="survey-done"><CheckCircle2 size={15}/> Merci. Votre réponse compte.</small>:<small className="survey-hint">1 réponse · +2 points</small>}</section>}) : <div className="panel"><Empty text="Aucun sondage actif."/></div>}</div><div className="agora-more">{hasMoreSurveys&&<button className="outline" type="button" onClick={()=>void loadMoreSurveys()} disabled={loadingMoreSurveys}>{loadingMoreSurveys?'Chargement…':'Charger plus de sondages'}</button>}</div></>}{section==='roadmap'&&<><div className="roadmap-grid">{(['new','review','planned','building','done'] as IdeaStatus[]).map(status=><section className="panel roadmap-col" key={status}><div className="roadmap-title"><span className={`idea-status ${ideaStatusClass[status]}`}>{ideaStatusLabel[status]}</span><b>{ideas.filter(x=>x.status===status).length}</b></div>{ideas.filter(x=>x.status===status).map(x=><article className="roadmap-item" key={x.id}><b>{x.title}</b><small>{x.votes} votes</small></article>)}{!ideas.some(x=>x.status===status)&&<small className="muted">Rien pour l'instant.</small>}</section>)}</div><div className="agora-more">{hasMoreIdeas&&<button className="outline" type="button" onClick={()=>void loadMoreIdeas()} disabled={loadingMoreIdeas}>{loadingMoreIdeas?'Chargement…':'Charger plus d’idées'}</button>}</div></>}</>}
 
 
@@ -181,6 +189,7 @@ export function Community({role,mode,session,profile,schoolId}:{role:Role,mode:M
     if(!schoolId||!userId)return
     setLoading(true);setError(null)
     try{
+      const supabase=await loadSupabase()
       const {error:ensureError}=await supabase.rpc('ensure_default_community_spaces')
       if(ensureError)throw ensureError
       const {data,error}=await supabase.rpc('get_community_overview')
@@ -192,6 +201,7 @@ export function Community({role,mode,session,profile,schoolId}:{role:Role,mode:M
   async function loadLiveMessages(spaceId:string){
     if(!spaceId)return
     try{
+      const supabase=await loadSupabase()
       // Les 80 messages les plus récents, remis dans l'ordre de lecture.
       const {data,error}=await supabase.from('community_messages').select('id,space_id,sender_id,sender_name,sender_role,body,created_at').eq('space_id',spaceId).is('deleted_at',null).order('created_at',{ascending:false}).limit(80)
       if(error)throw error
@@ -204,15 +214,28 @@ export function Community({role,mode,session,profile,schoolId}:{role:Role,mode:M
   useEffect(()=>{if(!selectedSpace)return;if(isDemo){loadDemoMessages(selectedSpace.id);return}loadLiveMessages(selectedSpace.id)},[selectedSpace?.id,isDemo])
   useEffect(()=>{
     if(isDemo||!schoolId)return
-    const channel=supabase.channel(`eos-community-${schoolId}`).on('postgres_changes',{event:'INSERT',schema:'public',table:'community_messages',filter:`school_id=eq.${schoolId}`},payload=>{
-      const row:any=payload.new
-      setOverview(prev=>prev.map(s=>s.id===row.space_id?{...s,unread_count:(s.unread_count||0)+(row.sender_id===userId?0:1),latest_body:row.body,latest_at:row.created_at}:s))
-      if(row.space_id===selectedSpace?.id){
-        setMessages(prev=>prev.some(x=>x.id===row.id)?prev:[...prev,{id:row.id,space_id:row.space_id,sender_id:row.sender_id,sender_name:row.sender_id===userId?'Vous':'Membre',sender_role:'student',body:row.body,created_at:row.created_at,mine:row.sender_id===userId}])
-        if(row.sender_id!==userId)void supabase.rpc('mark_community_space_read',{p_space_id:row.space_id})
-      }
-    }).subscribe()
-    return()=>{void supabase.removeChannel(channel)}
+    let alive=true
+    let supabaseClient:any=null
+    let channel:any=null
+    ;(async()=>{
+      try{
+        const supabase=await loadSupabase()
+        if(!alive)return
+        supabaseClient=supabase
+        channel=supabase.channel(`eos-community-${schoolId}`).on('postgres_changes',{event:'INSERT',schema:'public',table:'community_messages',filter:`school_id=eq.${schoolId}`},payload=>{
+          const row:any=payload.new
+          setOverview(prev=>prev.map(s=>s.id===row.space_id?{...s,unread_count:(s.unread_count||0)+(row.sender_id===userId?0:1),latest_body:row.body,latest_at:row.created_at}:s))
+          if(row.space_id===selectedSpace?.id){
+            setMessages(prev=>prev.some(x=>x.id===row.id)?prev:[...prev,{id:row.id,space_id:row.space_id,sender_id:row.sender_id,sender_name:row.sender_id===userId?'Vous':'Membre',sender_role:'student',body:row.body,created_at:row.created_at,mine:row.sender_id===userId}])
+            if(row.sender_id!==userId)void supabase.rpc('mark_community_space_read',{p_space_id:row.space_id})
+          }
+        }).subscribe()
+      }catch(error){if(alive)setError(error)}
+    })()
+    return()=>{
+      alive=false
+      if(channel&&supabaseClient)void supabaseClient.removeChannel(channel)
+    }
   },[isDemo,schoolId,selectedSpace?.id,userId])
 
   async function sendMessage(e:React.FormEvent){
@@ -225,6 +248,7 @@ export function Community({role,mode,session,profile,schoolId}:{role:Role,mode:M
         const local:CommunityMessage={id:`local-${Date.now()}`,space_id:selectedSpace.id,sender_id:userId,sender_name:profile?.full_name||roleLabels[role],sender_role:role,body,created_at:new Date().toISOString(),mine:true}
         const next=[...messages,local];saveDemoStorage(demoKey(selectedSpace.id),next);setMessages(next);setOverview(prev=>prev.map(s=>s.id===selectedSpace.id?{...s,latest_body:body,latest_at:local.created_at,unread_count:0}:s));setDraft('');return
       }
+      const supabase=await loadSupabase()
       const {error}=await supabase.rpc('send_community_message',{p_space_id:selectedSpace.id,p_body:body})
       if(error)throw error
       setDraft(''); await loadLiveMessages(selectedSpace.id)
@@ -232,7 +256,7 @@ export function Community({role,mode,session,profile,schoolId}:{role:Role,mode:M
   }
   async function reportMessage(messageId:string){
     const reason=window.prompt('Expliquez brièvement pourquoi vous signalez ce message.')?.trim();if(!reason)return
-    try{if(isDemo){setNotice('Signalement démo enregistré localement.');return}const {error}=await supabase.rpc('report_community_message',{p_message_id:messageId,p_reason:reason});if(error)throw error;setNotice('Signalement reçu. Il sera examiné séparément de la discussion.')}catch(e:any){setError(e)}
+    try{if(isDemo){setNotice('Signalement démo enregistré localement.');return}const supabase=await loadSupabase();const {error}=await supabase.rpc('report_community_message',{p_message_id:messageId,p_reason:reason});if(error)throw error;setNotice('Signalement reçu. Il sera examiné séparément de la discussion.')}catch(e:any){setError(e)}
   }
 
   return <div className="community-page">
