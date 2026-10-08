@@ -24,7 +24,8 @@ const RewardsScreen=React.lazy(()=>import('./screens-engagement').then(m=>({defa
 const AgoraScreen=React.lazy(()=>import('./screens-engagement').then(m=>({default:m.Agora})))
 const CommunityScreen=React.lazy(()=>import('./screens-engagement').then(m=>({default:m.Community})))
 function ScreenFallback(){return <div className="panel"><div className="skeleton"><i/><i/></div></div>}
-import {describeError,errorMessage,isMissingSchemaError,isStaleChunkError as isStaleChunkFailure,setTechnicalErrorsVisible} from './lib/errors'
+import {describeError,errorMessage,isStaleChunkError as isStaleChunkFailure,setTechnicalErrorsVisible} from './lib/errors'
+import {createDemoData} from './demoFixtures'
 import {ErrorNotice} from './ui'
 import {BookOpen, CalendarDays, CheckCircle2, ChevronRight, CircleDollarSign, ClipboardList, Clock3, Gift, GraduationCap, KeyRound, Landmark, LogOut, Mail, Menu, Package, Save, School, ShieldCheck, ShoppingCart, FileUp, UserPlus, RefreshCw, Check, AlertTriangle, Sparkles, Star, UserRound, Users, UtensilsCrossed, WalletCards, X, Lightbulb, MessageSquarePlus, ThumbsUp, BarChart3, Palette, ListChecks, Gauge, Activity, ServerCog, MessageCircle, Megaphone, Send, Flag, ShieldAlert, Search, Info, UsersRound, LockKeyhole} from 'lucide-react'
 import './fonts.css'
@@ -55,14 +56,6 @@ type ReferralInfo={code:string;status?:string}
 
 type AppData={profile:Profile|null;studentId:string|null;school:SchoolInfo|null;subscription:SubscriptionInfo|null;referral:ReferralInfo|null;grades:Grade[];schedule:ScheduleRow[];payments:Payment[];points:PointEvent[];foodItems:FoodItem[];orders:Order[];rewards:Reward[];loading:boolean;homeDataLoading?:boolean;homePending?:string[];error:string|null}
 
-// Menu de démonstration disponible même si le catalogue Food n'a pas encore été migré.
-const DEMO_FOOD_ITEMS:FoodItem[]=[
-  {id:'burger',name:'Burger maison',price_xof:1500,active:true},
-  {id:'sandwich',name:'Sandwich poulet',price_xof:1000,active:true},
-  {id:'pizza',name:'Mini pizza',price_xof:2000,active:true},
-  {id:'drink',name:'Boisson',price_xof:500,active:true},
-]
-
 const roleLabels:Record<Role,string>={student:'Élève',parent:'Parent',teacher:'Professeur',admin:'Administration',director:'Directeur',cafeteria:'Cantine'}
 const isRole=(value:unknown):value is Role=>typeof value==='string' && Object.prototype.hasOwnProperty.call(roleLabels,value)
 const roleLabel=(value:unknown)=>isRole(value)?roleLabels[value]:String(value??'—')
@@ -79,16 +72,6 @@ const primaryTabs:Record<Role,Tab[]>={
 }
 const navContextLabel:Record<Tab,string>={home:'Votre journée',food:'Services du quotidien',schedule:'Votre planning',grades:'Scolarité',payments:'Finances',rewards:'Points & avantages',members:'Équipe & membres',agora:'Évolution d’École OS',community:'Espaces de confiance',pilotage:'Pilotage établissement',ops:'Système & coûts',account:'Préférences'}
 const foodCapabilities:Record<Role,{order:boolean;manageMenu:boolean}>={student:{order:true,manageMenu:false},parent:{order:true,manageMenu:false},teacher:{order:false,manageMenu:false},admin:{order:false,manageMenu:true},director:{order:false,manageMenu:false},cafeteria:{order:false,manageMenu:true}}
-
-
-const demoRoleIds:Record<Role,string>={
-  student:'00000000-0000-0000-0000-000000000101',
-  parent:'00000000-0000-0000-0000-000000000102',
-  teacher:'00000000-0000-0000-0000-000000000103',
-  admin:'00000000-0000-0000-0000-000000000104',
-  cafeteria:'00000000-0000-0000-0000-000000000105',
-  director:'00000000-0000-0000-0000-000000000106',
-}
 
 
 function money(n:number){return new Intl.NumberFormat('fr-FR').format(n)+' FCFA'}
@@ -318,7 +301,7 @@ function Login({onSchool,onDemo}:{onSchool:()=>void,onDemo:(r:Role)=>void}){
         </div>
 
         <button type="button" className="school-signup os-school-signup" onClick={onSchool}><School size={18}/>Inscrire mon école<ChevronRight size={16}/></button>
-        <p className="demo-note">La démo utilise des données fictives, en lecture seule. Pour un compte réel, le rôle provient de votre profil établissement.</p>
+        <p className="demo-note">Les données de démonstration sont fictives. Les actions disponibles sont simulées localement sur cet appareil : aucune donnée réelle n’est modifiée et aucun paiement n’est effectué.</p>
       </section>
     </div>
 
@@ -499,56 +482,8 @@ async function fetchLiveData(userId:string,onProgress?:(update:Partial<AppData>)
   }
 }
 async function fetchDemoData(role:Role):Promise<AppData>{
-  const supabase=await loadSupabase()
-  const profileId=demoRoleIds[role]
-  const studentId=demoRoleIds.student
-  try{
-    const gradeOwner=(role==='student'||role==='parent'||role==='teacher'||role==='admin')?studentId:profileId
-    const scheduleOwner=(role==='teacher')?demoRoleIds.teacher:(role==='student'||role==='parent'||role==='admin')?studentId:profileId
-    const paymentOwner=(role==='student'||role==='parent'||role==='admin')?studentId:profileId
-    const orderOwner=(role==='student'||role==='parent')?studentId:(role==='cafeteria'||role==='admin')?null:profileId
-
-    const profilePromise=supabase.from('demo_profiles').select('id,full_name,role,class_name,child_name,email').eq('id',profileId).single()
-    const gradesPromise=(role==='student'||role==='parent'||role==='teacher'||role==='admin')
-      ?supabase.from('demo_grades').select('id,subject,value,coefficient,term').eq('profile_id',gradeOwner).order('value',{ascending:false})
-      :Promise.resolve({data:[],error:null} as any)
-    const schedulePromise=(role==='student'||role==='parent'||role==='teacher'||role==='admin')
-      ?supabase.from('demo_schedule').select('id,weekday,starts_at,ends_at,subject,room,class_name').eq('profile_id',scheduleOwner).order('weekday').order('starts_at')
-      :Promise.resolve({data:[],error:null} as any)
-    const paymentsPromise=(role==='student'||role==='parent'||role==='admin')
-      ?supabase.from('demo_payments').select('id,description,amount_xof,status,due_date').eq('profile_id',paymentOwner).order('due_date',{ascending:false})
-      :Promise.resolve({data:[],error:null} as any)
-    const pointsPromise=supabase.from('demo_points').select('id,points,reason,created_at').eq('profile_id',profileId).order('created_at',{ascending:false}).limit(50)
-    const ordersPromise=(role==='student'||role==='parent'||role==='admin'||role==='cafeteria')
-      ?(orderOwner
-        ?supabase.from('demo_orders').select('id,total_xof,status,pickup_date,pickup_slot,created_at').eq('profile_id',orderOwner).order('created_at',{ascending:false}).limit(20)
-        :supabase.from('demo_orders').select('id,total_xof,status,pickup_date,pickup_slot,created_at').order('created_at',{ascending:false}).limit(40))
-      :Promise.resolve({data:[],error:null} as any)
-    const schoolPromise=role==='director'
-      ?supabase.from('demo_school_accounts').select('school_name,city,plan,status,price_xof,period_end,referral_code').eq('profile_id',profileId).maybeSingle()
-      :Promise.resolve({data:null,error:null} as any)
-
-    const [p,g,s,pa,pt,o,ds]=await Promise.all([profilePromise,gradesPromise,schedulePromise,paymentsPromise,pointsPromise,ordersPromise,schoolPromise])
-    const firstError=[p,g,s,pa,pt,o,ds].find(x=>x?.error)
-    if(firstError?.error)throw firstError.error
-    const demoSchool=ds.data as any
-    const demoProfile=p.data as Profile
-    return {
-      profile:demoProfile,
-      studentId:role==='student'||role==='parent'?studentId:null,
-      school:demoSchool?{id:'demo-school',name:demoSchool.school_name,city:demoSchool.city,director_id:profileId}:null,
-      subscription:demoSchool?{id:'demo-sub',plan:demoSchool.plan,status:demoSchool.status,billing_price_xof:Number(demoSchool.price_xof),current_period_end:demoSchool.period_end}:null,
-      referral:demoSchool?.referral_code?{code:demoSchool.referral_code}:null,
-      grades:(g.data||[]).map((x:any)=>({...x,value:Number(x.value),coefficient:Number(x.coefficient)})),
-      schedule:(s.data||[]) as ScheduleRow[],
-      payments:(pa.data||[]) as Payment[],
-      points:(pt.data||[]) as PointEvent[],
-      foodItems:[],
-      orders:(o.data||[]) as Order[],
-      rewards:[],
-      loading:false,error:null
-    }
-  }catch(e:any){return {profile:null,studentId:null,school:null,subscription:null,referral:null,grades:[],schedule:[],payments:[],points:[],foodItems:[],orders:[],rewards:[],loading:false,error:errorMessage(e,'Les données de démo sont indisponibles.')}}
+  // Démonstration locale : aucune table Supabase ni aucun endpoint n'est consulté.
+  return createDemoData(role)
 }
 
 function SchoolOnboarding({onBack,onDone}:{onBack:()=>void,onDone:()=>void}){
@@ -726,7 +661,13 @@ function App(){
   // (« Rendered more hooks than during the previous render ») dès que la session change → page blanche.
   useEffect(()=>{if(!canAccess(role,tab) && !(tab==='ops'&&platformAdmin))setTab('home')},[role,tab,platformAdmin])
   useEffect(()=>{
-    if(!session?.user?.id&&mode==='live')return
+    // Toutes les sections démo sont déjà dans les fixtures locales. Sortir avant
+    // tout import/usage de Supabase garantit qu'aucune requête backend ne part en démo.
+    if(mode==='demo'){
+      setHydratingTab(null)
+      return
+    }
+    if(!session?.user?.id)return
     const needsFood=tab==='food'&&!hydratedTabs.current.has('food')
     const needsRewards=tab==='rewards'&&!hydratedTabs.current.has('rewards')
     const needsGrades=tab==='grades'&&!hydratedTabs.current.has('grades')&&!data.homePending?.includes('grades')
@@ -741,84 +682,55 @@ function App(){
       try{
         const supabase=await loadSupabase()
         if(needsFood){
-          if(mode==='demo'){
-            const roleNow=role
-            const orderOwner=(roleNow==='student'||roleNow==='parent')?demoRoleIds.student:(roleNow==='cafeteria'||roleNow==='admin')?null:demoRoleIds[roleNow]
-            const [foodRes,ordersRes]=await Promise.all([
-              supabase.from('food_items').select('id,name,price_xof,active').eq('active',true).order('name'),
-              orderOwner
-                ?supabase.from('demo_orders').select('id,total_xof,status,pickup_date,pickup_slot,created_at').eq('profile_id',orderOwner).order('created_at',{ascending:false}).limit(20)
-                :supabase.from('demo_orders').select('id,total_xof,status,pickup_date,pickup_slot,created_at').order('created_at',{ascending:false}).limit(40),
-            ])
-            if(foodRes.error&&!isMissingSchemaError(foodRes.error))throw foodRes.error
-            if(ordersRes.error&&!isMissingSchemaError(ordersRes.error))throw ordersRes.error
-            const foodItems=foodRes.data?.length?(foodRes.data as FoodItem[]):DEMO_FOOD_ITEMS
-            const orders=ordersRes.error?[]:(ordersRes.data||[]) as Order[]
-            if(alive)setData(d=>({...d,foodItems,orders}))
-          }else{
-            const roleNow=data.profile?.role||role
-            const isManager=roleNow==='admin'||roleNow==='cafeteria'
-            const [foodRes,ordersRes]=await Promise.all([
-              supabase.from('food_items').select('id,name,price_xof,active').order('name'),
-              isManager
-                ?supabase.from('food_orders').select('id,total_xof,status,pickup_date,pickup_slot,created_at').order('created_at',{ascending:false}).limit(40)
-                :supabase.from('food_orders').select('id,total_xof,status,pickup_date,pickup_slot,created_at').eq('user_id',session.user.id).order('created_at',{ascending:false}).limit(20)
-            ])
-            if(foodRes.error)throw foodRes.error
-            if(ordersRes.error)throw ordersRes.error
-            if(alive)setData(d=>({...d,foodItems:(foodRes.data||[]) as FoodItem[],orders:(ordersRes.data||[]) as Order[]}))
-          }
+          const roleNow=data.profile?.role||role
+          const isManager=roleNow==='admin'||roleNow==='cafeteria'
+          const [foodRes,ordersRes]=await Promise.all([
+            supabase.from('food_items').select('id,name,price_xof,active').order('name'),
+            isManager
+              ?supabase.from('food_orders').select('id,total_xof,status,pickup_date,pickup_slot,created_at').order('created_at',{ascending:false}).limit(40)
+              :supabase.from('food_orders').select('id,total_xof,status,pickup_date,pickup_slot,created_at').eq('user_id',session.user.id).order('created_at',{ascending:false}).limit(20)
+          ])
+          if(foodRes.error)throw foodRes.error
+          if(ordersRes.error)throw ordersRes.error
+          if(alive)setData(d=>({...d,foodItems:(foodRes.data||[]) as FoodItem[],orders:(ordersRes.data||[]) as Order[]}))
         }else if(needsRewards){
           const promises:any[]=[supabase.from('rewards').select('id,name,points_cost,active,audience_role').eq('active',true).order('points_cost')]
-          if(mode==='live' && (role==='student'||role==='parent')) promises.push(supabase.from('point_ledger').select('id,points,reason,created_at').eq('user_id',session.user.id).order('created_at',{ascending:false}).limit(100))
-          else if(mode==='demo') promises.push(supabase.from('demo_points').select('id,points,reason,created_at').eq('profile_id',demoRoleIds[role]).order('created_at',{ascending:false}).limit(100))
+          if(role==='student'||role==='parent')promises.push(supabase.from('point_ledger').select('id,points,reason,created_at').eq('user_id',session.user.id).order('created_at',{ascending:false}).limit(100))
           const [rewardsRes,pointsRes]=await Promise.all(promises)
           if(rewardsRes.error)throw rewardsRes.error
           if(pointsRes?.error)throw pointsRes.error
           if(alive)setData(d=>({...d,rewards:(rewardsRes.data||[]) as Reward[],...(pointsRes?{points:(pointsRes.data||[]) as PointEvent[]}: {})}))
         }else if(needsGrades){
-          if(mode==='demo'){
-            if(alive)setHydratingTab(null)
-          }else{
-            const owner=(role==='student'||role==='parent')?data.studentId:role==='teacher'?session.user.id:null
-            let gradesRes:any
-            if(owner) gradesRes=await supabase.from('grades').select('id,subject_id,value,term,created_at,subjects(name,coefficient)').eq('student_id',owner).order('created_at',{ascending:false}).limit(500)
-            else if(role==='admin') gradesRes=await supabase.from('grades').select('id,subject_id,value,term,created_at,subjects(name,coefficient)').order('created_at',{ascending:false}).limit(500)
-            else gradesRes={data:[],error:null}
-            if(gradesRes.error)throw gradesRes.error
-            const grades=(gradesRes.data||[]).map((g:any)=>({id:g.id,subject:g.subjects?.name||'Matière',value:Number(g.value),coefficient:Number(g.subjects?.coefficient||1),term:g.term})) as Grade[]
-            if(alive)setData(d=>({...d,grades}))
-          }
+          const owner=(role==='student'||role==='parent')?data.studentId:role==='teacher'?session.user.id:null
+          let gradesRes:any
+          if(owner)gradesRes=await supabase.from('grades').select('id,subject_id,value,term,created_at,subjects(name,coefficient)').eq('student_id',owner).order('created_at',{ascending:false}).limit(500)
+          else if(role==='admin')gradesRes=await supabase.from('grades').select('id,subject_id,value,term,created_at,subjects(name,coefficient)').order('created_at',{ascending:false}).limit(500)
+          else gradesRes={data:[],error:null}
+          if(gradesRes.error)throw gradesRes.error
+          const grades=(gradesRes.data||[]).map((g:any)=>({id:g.id,subject:g.subjects?.name||'Matière',value:Number(g.value),coefficient:Number(g.subjects?.coefficient||1),term:g.term})) as Grade[]
+          if(alive)setData(d=>({...d,grades}))
         }else if(needsSchedule){
-          if(mode==='demo'){
-            if(alive)setHydratingTab(null)
-          }else{
-            let q:any=supabase.from('schedule').select('id,weekday,starts_at,ends_at,room,teacher_id,class_id,subject_id,subjects(name),classes(name)').order('weekday').order('starts_at').limit(500)
-            if(role==='teacher')q=q.eq('teacher_id',session.user.id)
-            else if(data.studentId){
-              const {data:members,error}=await supabase.from('class_members').select('class_id').eq('student_id',data.studentId)
-              if(error)throw error
-              const ids=(members||[]).map((m:any)=>m.class_id).filter(Boolean)
-              q=ids.length?q.in('class_id',ids):q.eq('id','00000000-0000-0000-0000-000000000000')
-            }else if(role!=='admin'){
-              q=q.eq('id','00000000-0000-0000-0000-000000000000')
-            }
-            const scheduleRes=await q
-            if(scheduleRes.error)throw scheduleRes.error
-            const schedule=(scheduleRes.data||[]).map((x:any)=>({id:x.id,weekday:Number(x.weekday),starts_at:x.starts_at,ends_at:x.ends_at,subject:x.subjects?.name||'Cours',room:x.room,class_name:x.classes?.name||data.profile?.class_name||'Classe'})) as ScheduleRow[]
-            if(alive)setData(d=>({...d,schedule}))
+          let q:any=supabase.from('schedule').select('id,weekday,starts_at,ends_at,room,teacher_id,class_id,subject_id,subjects(name),classes(name)').order('weekday').order('starts_at').limit(500)
+          if(role==='teacher')q=q.eq('teacher_id',session.user.id)
+          else if(data.studentId){
+            const {data:members,error}=await supabase.from('class_members').select('class_id').eq('student_id',data.studentId)
+            if(error)throw error
+            const ids=(members||[]).map((m:any)=>m.class_id).filter(Boolean)
+            q=ids.length?q.in('class_id',ids):q.eq('id','00000000-0000-0000-0000-000000000000')
+          }else if(role!=='admin'){
+            q=q.eq('id','00000000-0000-0000-0000-000000000000')
           }
+          const scheduleRes=await q
+          if(scheduleRes.error)throw scheduleRes.error
+          const schedule=(scheduleRes.data||[]).map((x:any)=>({id:x.id,weekday:Number(x.weekday),starts_at:x.starts_at,ends_at:x.ends_at,subject:x.subjects?.name||'Cours',room:x.room,class_name:x.classes?.name||data.profile?.class_name||'Classe'})) as ScheduleRow[]
+          if(alive)setData(d=>({...d,schedule}))
         }else if(needsPayments){
-          if(mode==='demo'){
-            if(alive)setHydratingTab(null)
-          }else{
-            let q:any=supabase.from('school_payments').select('id,description,amount_xof,status,due_date').order('due_date',{ascending:false}).limit(500)
-            if(data.studentId)q=q.eq('user_id',data.studentId)
-            else if(role!=='admin')q=q.eq('id','00000000-0000-0000-0000-000000000000')
-            const paymentsRes=await q
-            if(paymentsRes.error)throw paymentsRes.error
-            if(alive)setData(d=>({...d,payments:(paymentsRes.data||[]) as Payment[]}))
-          }
+          let q:any=supabase.from('school_payments').select('id,description,amount_xof,status,due_date').order('due_date',{ascending:false}).limit(500)
+          if(data.studentId)q=q.eq('user_id',data.studentId)
+          else if(role!=='admin')q=q.eq('id','00000000-0000-0000-0000-000000000000')
+          const paymentsRes=await q
+          if(paymentsRes.error)throw paymentsRes.error
+          if(alive)setData(d=>({...d,payments:(paymentsRes.data||[]) as Payment[]}))
         }
       }catch(error:any){
         hydratedTabs.current.delete(key)
@@ -851,7 +763,7 @@ function App(){
       const simulatedOrder:Order={id:`demo-local-${Date.now()}`,total_xof,status:'pending',pickup_date:isoDate(now),pickup_slot:'12:30–12:40',created_at:now.toISOString()}
       setData(current=>({...current,orders:[simulatedOrder,...current.orders]}))
       setCart({})
-      setOrderMsg('Commande de démonstration enregistrée sur cet appareil. Aucun paiement n’a été effectué.')
+      setOrderMsg('Commande de démonstration simulée localement pour cette session. Aucun paiement réel n’a été effectué.')
       return
     }
     setOrderMsg('Création du paiement Wave…')
@@ -868,7 +780,7 @@ function App(){
       <Brand/>
       <div className="role-chip"><small>{roleLabels[role]}{data.profile?.class_name?` · ${data.profile.class_name}`:''}</small><b>{profileName}</b></div>
       {mode==='live'&&<div className="session-badge"><span className="session-dot"/>Session sécurisée</div>}
-      {mode==='demo'&&<div className="demo-mode"><span>Mode démo</span>Données fictives, lecture seule.<button onClick={()=>switchMode('live')}>Quitter la démo</button></div>}
+      {mode==='demo'&&<div className="demo-mode"><span>Mode démo</span>Données fictives. Les actions disponibles sont simulées localement ; aucun paiement réel.<button onClick={()=>switchMode('live')}>Quitter la démo</button></div>}
       <nav aria-label="Navigation principale">
         {primaryItems.map(([id,label,Icon])=><button key={id} className={tab===id?'active':''} aria-current={tab===id?'page':undefined} title={navContextLabel[id]} onClick={()=>{setTab(id);setMenuOpen(false)}}><Icon size={19}/><span>{label}</span>{id==='food'&&count>0&&<em>{String(count)}</em>}</button>)}
         {secondaryItems.length>0&&<div className="nav-more-group"><button className="nav-more" aria-expanded={moreOpen} onClick={()=>setMoreOpen(v=>!v)}><ListChecks size={19}/><span>Evolution</span><ChevronRight size={15} className={moreOpen?'turn':''}/></button>
