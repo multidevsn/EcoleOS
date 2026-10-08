@@ -2,14 +2,20 @@ plugins {
     id "com.android.application"
 }
 
-// Config de signature du build release, lue depuis un fichier local JAMAIS commité
-// (keystore.properties est dans .gitignore, comme *.jks et *.keystore).
-// Voir RELEASE_SIGNING.md à la racine du projet Android pour générer ce fichier et la clé.
+// En local : keystore.properties ignoré par Git. En CI : variables d'environnement
+// (la clé est décodée temporairement par le workflow GitHub Actions).
 def keystorePropsFile = rootProject.file("keystore.properties")
 def keystoreProps = new Properties()
-def hasSigningConfig = keystorePropsFile.exists()
-if (hasSigningConfig) {
+if (keystorePropsFile.exists()) {
     keystoreProps.load(new FileInputStream(keystorePropsFile))
+} else if (System.getenv("ANDROID_KEYSTORE_FILE")) {
+    keystoreProps["storeFile"] = System.getenv("ANDROID_KEYSTORE_FILE")
+    keystoreProps["storePassword"] = System.getenv("ANDROID_STORE_PASSWORD") ?: ""
+    keystoreProps["keyAlias"] = System.getenv("ANDROID_KEY_ALIAS") ?: ""
+    keystoreProps["keyPassword"] = System.getenv("ANDROID_KEY_PASSWORD") ?: ""
+}
+def hasSigningConfig = ["storeFile", "storePassword", "keyAlias", "keyPassword"].every {
+    keystoreProps[it] instanceof String && !keystoreProps[it].trim().isEmpty()
 }
 
 android {
@@ -65,9 +71,8 @@ android {
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
             if (hasSigningConfig) {
                 signingConfig signingConfigs.release
-            } else {
-                signingConfig signingConfigs.debug
             }
+            // Ne jamais signer une variante release avec la clé debug.
         }
     }
 
@@ -75,6 +80,22 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+}
+
+// Échouer avant toute compilation release sans clé (au lieu de produire un APK non signé).
+tasks.register("validateReleaseSigning") {
+    doLast {
+        if (!hasSigningConfig || !rootProject.file(keystoreProps["storeFile"]).isFile()) {
+            throw new GradleException(
+                "Signature release absente ou incomplète. Configurez android/keystore.properties " +
+                "ou les variables ANDROID_KEYSTORE_FILE, ANDROID_STORE_PASSWORD, " +
+                "ANDROID_KEY_ALIAS et ANDROID_KEY_PASSWORD (voir RELEASE_SIGNING.md)."
+            )
+        }
+    }
+}
+tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+    dependsOn("validateReleaseSigning")
 }
 
 def findWebDist() {

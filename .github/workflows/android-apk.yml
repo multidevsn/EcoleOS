@@ -1,0 +1,76 @@
+name: APK Android
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Type d’APK à construire'
+        type: choice
+        options: [debug, release]
+        default: debug
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: android-actions/setup-android@v3
+      - name: Installer la plateforme Android
+        run: sdkmanager --install 'platforms;android-37' 'build-tools;36.0.0'
+      - name: Construire les ressources WebView (sans service worker)
+        run: |
+          npm ci
+          npm run build:android
+      - name: Construire l'APK debug
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') && !(github.event_name == 'workflow_dispatch' && inputs.build_type == 'release') }}
+        working-directory: android
+        run: ./gradlew --no-daemon assembleDebug
+      - name: Construire et vérifier l'APK release signé
+        if: ${{ startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.build_type == 'release') }}
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_STORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [[ -z "${!name}" ]]; then
+              echo "Secret GitHub manquant : $name" >&2
+              exit 1
+            fi
+          done
+          umask 077
+          export ANDROID_KEYSTORE_FILE="$RUNNER_TEMP/ecoleos-release.jks"
+          trap 'rm -f "$ANDROID_KEYSTORE_FILE"' EXIT
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$ANDROID_KEYSTORE_FILE"
+          ./gradlew --no-daemon assembleRelease
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose app/build/outputs/apk/release/app-release.apk
+      - name: Empreinte de l'APK
+        run: sha256sum android/app/build/outputs/apk/**/*.apk
+      - name: Télécharger l'APK depuis les artifacts du workflow
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecoleos-${{ (startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.build_type == 'release')) && 'release' || 'debug' }}-${{ github.run_number }}
+          path: android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
+          retention-days: 30
