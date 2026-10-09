@@ -32,9 +32,16 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
-      - uses: android-actions/setup-android@v3
-      - name: Installer la plateforme Android
-        run: sdkmanager --install 'platforms;android-37' 'build-tools;36.0.0'
+      - name: Préparer le SDK Android (platforms;android-37 + build-tools)
+        run: |
+          set -euo pipefail
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKM" ]; then
+            SDKM="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -path '*/bin/*' | head -1)"
+          fi
+          echo "sdkmanager: $SDKM"
+          yes | "$SDKM" --licenses >/dev/null 2>&1 || true
+          "$SDKM" --install 'platform-tools' 'platforms;android-37' 'build-tools;36.0.0'
       - name: Construire les ressources WebView (sans service worker)
         run: |
           npm ci
