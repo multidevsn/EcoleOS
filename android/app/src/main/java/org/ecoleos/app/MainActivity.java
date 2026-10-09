@@ -377,13 +377,18 @@ public final class MainActivity extends Activity {
         public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
             if (!request.isForMainFrame()) return false;
             Uri uri = request.getUrl();
-            if (isSameOrigin(uri) || isPaymentHost(uri)) return false;
+            if (isSameOrigin(uri)) return false;
+            // Wave demande l'ouverture de son checkout dans le navigateur / l'application Wave.
+            // Le garder dans la WebView peut empêcher la bascule vers l'application native.
+            if (isWavePaymentHost(uri)) {
+                openExternal(uri);
+                return true;
+            }
+            // SasPay et Paddle gardent leur navigation dans la WebView pour préserver le retour
+            // vers l'application et leur flux de checkout ; les autres domaines HTTPS sont externes.
+            if (isPaymentHost(uri)) return false;
             if ("https".equalsIgnoreCase(uri.getScheme()) && uri.getUserInfo() == null) {
-                try {
-                    startActivity(new Intent(Intent.ACTION_VIEW, uri));
-                } catch (ActivityNotFoundException ignored) {
-                    Toast.makeText(MainActivity.this, R.string.no_browser, Toast.LENGTH_SHORT).show();
-                }
+                openExternal(uri);
             }
             return true;
         }
@@ -391,11 +396,10 @@ public final class MainActivity extends Activity {
         @Override
         public boolean shouldOverrideUrlLoading(WebView view, String url) {
             Uri uri = Uri.parse(url);
-            if (isSameOrigin(uri) || isPaymentHost(uri)) return false;
-            if ("https".equalsIgnoreCase(uri.getScheme()) && uri.getUserInfo() == null) {
-                try { startActivity(new Intent(Intent.ACTION_VIEW, uri)); }
-                catch (ActivityNotFoundException ignored) { Toast.makeText(MainActivity.this, R.string.no_browser, Toast.LENGTH_SHORT).show(); }
-            }
+            if (isSameOrigin(uri)) return false;
+            if (isWavePaymentHost(uri)) { openExternal(uri); return true; }
+            if (isPaymentHost(uri)) return false;
+            if ("https".equalsIgnoreCase(uri.getScheme()) && uri.getUserInfo() == null) openExternal(uri);
             return true;
         }
 
@@ -552,7 +556,22 @@ public final class MainActivity extends Activity {
         host = host.toLowerCase(Locale.ROOT);
         return host.equals("supabase.co") || host.endsWith(".supabase.co")
                 || host.equals("paddle.com") || host.endsWith(".paddle.com")
-                || host.equals("wave.com") || host.endsWith(".wave.com");
+                || host.equals("wave.com") || host.endsWith(".wave.com")
+                || host.equals("pay.saspay.me");
+    }
+
+    private void openExternal(Uri uri) {
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, uri));
+        } catch (ActivityNotFoundException ignored) {
+            Toast.makeText(MainActivity.this, R.string.no_browser, Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private boolean isWavePaymentHost(Uri uri) {
+        if (uri == null || !"https".equalsIgnoreCase(uri.getScheme()) || uri.getUserInfo() != null) return false;
+        String host = uri.getHost();
+        return host != null && host.equalsIgnoreCase("pay.wave.com");
     }
 
     private boolean isPaymentHost(Uri uri) {
@@ -561,7 +580,8 @@ public final class MainActivity extends Activity {
         if (host == null) return false;
         host = host.toLowerCase(Locale.ROOT);
         return host.equals("wave.com") || host.endsWith(".wave.com")
-                || host.equals("paddle.com") || host.endsWith(".paddle.com");
+                || host.equals("paddle.com") || host.endsWith(".paddle.com")
+                || host.equals("pay.saspay.me");
     }
 
     private String addContentSecurityPolicy(String html) {
@@ -569,8 +589,8 @@ public final class MainActivity extends Activity {
                 + "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.paddle.com https://*.paddle.com; "
                 + "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; "
                 + "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.paddle.com; "
-                + "frame-src 'self' https://*.paddle.com https://*.wave.com; "
-                + "form-action 'self' https://*.paddle.com https://*.wave.com; upgrade-insecure-requests";
+                + "frame-src 'self' https://*.paddle.com https://*.wave.com https://pay.saspay.me; "
+                + "form-action 'self' https://*.paddle.com https://*.wave.com https://pay.saspay.me; upgrade-insecure-requests";
         String meta = "<meta http-equiv=\"Content-Security-Policy\" content=\"" + policy + "\">";
         int head = html.toLowerCase(Locale.ROOT).indexOf("<head>");
         if (head < 0) return html;

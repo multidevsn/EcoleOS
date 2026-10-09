@@ -98,23 +98,9 @@ tasks.matching { it.name == "preReleaseBuild" }.configureEach {
     dependsOn("validateReleaseSigning")
 }
 
-def findWebDist() {
-    def candidates = [
-        rootProject.file("../dist"),
-        rootProject.file("../../EcoleOS/dist"),
-        rootProject.file("../../EcoleOS_web_security_fixes/dist"),
-        rootProject.file("../EcoleOS/dist"),
-        rootProject.file("../EcoleOS_web_security_fixes/dist")
-    ]
-    for (def candidate : candidates) {
-        if (new File(candidate, "index.html").isFile()) {
-            return candidate
-        }
-    }
-    return rootProject.file("../dist")
-}
-
-def webDist = findWebDist()
+// Une seule source de vérité : le build produit par le package.json de CE dépôt.
+// Ne jamais embarquer silencieusement un `dist/` d'un ancien projet voisin.
+def webDist = rootProject.file("../dist")
 def webAssets = file("src/main/assets/www")
 
 tasks.register("syncWebAssets", Sync) {
