@@ -1,4 +1,4 @@
-﻿import { env } from '../../server/env.js'
+import { env } from '../../server/env.js'
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 
@@ -7,8 +7,12 @@ function json(res: VercelResponse, status: number, body: unknown) { return res.s
 
 async function prepareWaveCheckout(admin:any, cycles:any[]) {
   if (!env('WAVE_API_KEY')) return { prepared: 0, skipped: cycles.length, reason: 'WAVE_API_KEY missing' }
-  const base = env('APP_URL')
-  if (!base) return { prepared: 0, skipped: cycles.length, reason: 'APP_URL missing' }
+  const configuredBase = env('APP_URL').trim()
+  if (!configuredBase) return { prepared: 0, skipped: cycles.length, reason: 'APP_URL missing' }
+  let baseUrl: URL
+  try { baseUrl = new URL(configuredBase) } catch { return { prepared: 0, skipped: cycles.length, reason: 'APP_URL invalid' } }
+  if (baseUrl.protocol !== 'https:' || baseUrl.username || baseUrl.password || baseUrl.search || baseUrl.hash || ['localhost', '127.0.0.1', '::1'].includes(baseUrl.hostname)) return { prepared: 0, skipped: cycles.length, reason: 'APP_URL must be a public HTTPS origin' }
+  const base = baseUrl.origin
   let prepared = 0
   let skipped = 0
   for (const cycle of cycles) {
@@ -21,6 +25,7 @@ async function prepareWaveCheckout(admin:any, cycles:any[]) {
       const response = await fetch('https://api.wave.com/v1/checkout/sessions', {
         method: 'POST',
         headers: { Authorization: `Bearer ${env('WAVE_API_KEY')}`, 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(8000),
         body: JSON.stringify({
           amount: String(amount),
           currency: 'XOF',
@@ -29,10 +34,14 @@ async function prepareWaveCheckout(admin:any, cycles:any[]) {
           error_url: `${base}/?payment=error`,
         }),
       })
-      const wave = await response.json()
-      if (!response.ok || !wave?.id || !wave?.wave_launch_url) throw new Error(wave?.message || 'Wave checkout error')
-      const { error } = await admin.from('billing_cycles').update({ provider_checkout_id: wave.id, provider_checkout_url: wave.wave_launch_url, updated_at: new Date().toISOString() }).eq('id', cycle.id)
+      const wave = await response.json().catch(() => ({}))
+      if (!response.ok || typeof wave?.id !== 'string' || !wave.id.trim() || typeof wave?.wave_launch_url !== 'string') throw new Error(wave?.message || 'Wave checkout error')
+      let launchUrl: URL
+      try { launchUrl = new URL(wave.wave_launch_url) } catch { throw new Error('Invalid Wave checkout URL') }
+      if (launchUrl.protocol !== 'https:' || launchUrl.hostname !== 'pay.wave.com' || launchUrl.username || launchUrl.password || launchUrl.port) throw new Error('Unapproved Wave checkout domain')
+      const { data: updated, error } = await admin.from('billing_cycles').update({ provider_checkout_id: wave.id, provider_checkout_url: launchUrl.toString(), provider_checkout_amount_xof: amount, updated_at: new Date().toISOString() }).eq('id', cycle.id).eq('status', cycle.status).is('provider_checkout_id', null).select('id').maybeSingle()
       if (error) throw error
+      if (!updated?.id) { skipped++; continue }
       prepared++
     } catch (e:any) {
       skipped++

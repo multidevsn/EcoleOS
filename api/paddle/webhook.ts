@@ -30,9 +30,14 @@ async function handler(req:VercelRequest,res:VercelResponse){
   if(!env('SUPABASE_URL')||!env('SUPABASE_SECRET_KEY'))return res.status(503).json({error:'Supabase serveur non configuré.'})
   const admin=createClient(env('SUPABASE_URL'),env('SUPABASE_SECRET_KEY'))
   try{
-    const {error:insertError}=await admin.from('paddle_events').insert({id:event.event_id,event_type:event.event_type,payload:event})
+    const data=event.data||{}, custom=data.custom_data||{}
+    const storedPayload={ event_id:event.event_id,event_type:event.event_type,data:{
+      id:data.id||null,subscription_id:data.subscription_id||null,status:data.status||null,
+      customer_id:data.customer_id||null,custom_data:{school_subscription_id:custom.school_subscription_id||null,school_id:custom.school_id||null},
+      current_billing_period:data.current_billing_period?.ends_at?{ends_at:data.current_billing_period.ends_at}:null,
+    }}
+    const {error:insertError}=await admin.from('paddle_events').insert({id:event.event_id,event_type:event.event_type,payload:storedPayload})
     if(insertError){if(insertError.code==='23505'){const {data:seen,error:seenError}=await admin.from('paddle_events').select('processed_at').eq('id',event.event_id).maybeSingle();if(seenError)throw seenError;if(seen?.processed_at)return res.status(200).json({received:true,duplicate:true,event_id:event.event_id})}else throw insertError}
-    const data=event.data||{},custom=data.custom_data||{}
     const subscriptionId=String(custom.school_subscription_id||'')
     const schoolId=String(custom.school_id||'')
     const paddleSubscriptionId=String(data.id||data.subscription_id||'')
@@ -40,14 +45,28 @@ async function handler(req:VercelRequest,res:VercelResponse){
     const rawStatus=String(data.status||'')
     const mappedStatus=rawStatus==='active'||event.event_type==='subscription.activated'?'active':rawStatus==='past_due'||event.event_type==='subscription.past_due'?'past_due':rawStatus==='canceled'||event.event_type==='subscription.canceled'?'cancelled':null
     const supported=/^subscription\.(created|activated|updated|past_due|canceled)$/.test(event.event_type)
+    if(supported&&!mappedStatus){
+      await admin.from('paddle_events').update({last_error:`Statut Paddle non géré: ${rawStatus || '(vide)'}`}).eq('id',event.event_id)
+      return res.status(503).json({error:'Statut d’abonnement Paddle non géré; rapprochement manuel requis.',retryable:true})
+    }
     if(supported&&mappedStatus){
       let query=admin.from('school_subscriptions').update({billing_provider:'paddle',paddle_subscription_id:paddleSubscriptionId||null,paddle_customer_id:/^ctm_[A-Za-z0-9]+$/.test(customerId)?customerId:null,current_period_end:data.current_billing_period?.ends_at?String(data.current_billing_period.ends_at).slice(0,10):undefined,status:mappedStatus,updated_at:new Date().toISOString()})
       if(subscriptionId&&schoolId)query=query.eq('id',subscriptionId).eq('school_id',schoolId)
       else if(paddleSubscriptionId)query=query.eq('paddle_subscription_id',paddleSubscriptionId)
-      else return res.status(200).json({received:true,ignored:true,event_id:event.event_id})
-      const {error}=await query;if(error)throw error
+      else {
+        const {error:ignoredError}=await admin.from('paddle_events').update({processed_at:new Date().toISOString(),last_error:'Webhook abonnement sans référence de rattachement; événement ignoré.'}).eq('id',event.event_id)
+        if(ignoredError)throw ignoredError
+        return res.status(200).json({received:true,ignored:true,event_id:event.event_id})
+      }
+      const {data:updated,error}=await query.select('id').maybeSingle()
+      if(error)throw error
+      if(!updated?.id){
+        await admin.from('paddle_events').update({last_error:'Aucun abonnement ne correspond aux références du webhook.'}).eq('id',event.event_id)
+        return res.status(503).json({error:'Webhook Paddle non rapproché avec un abonnement EcoleOS.',retryable:true})
+      }
     }
-    await admin.from('paddle_events').update({processed_at:new Date().toISOString()}).eq('id',event.event_id)
+    const {error:processedError}=await admin.from('paddle_events').update({processed_at:new Date().toISOString(),last_error:null}).eq('id',event.event_id)
+    if(processedError)throw processedError
     return res.status(200).json({received:true,event_id:event.event_id})
   }catch(error:any){return res.status(500).json({error:error?.message||'Paddle webhook processing error'})}
 }

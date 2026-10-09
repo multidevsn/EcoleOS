@@ -1,4 +1,4 @@
-﻿export type Role='student'|'parent'|'teacher'|'admin'|'director'|'cafeteria'
+export type Role='student'|'parent'|'teacher'|'admin'|'director'|'cafeteria'
 export type Tab='home'|'food'|'schedule'|'grades'|'payments'|'rewards'|'members'|'agora'|'community'|'pilotage'|'ops'|'account'
 export type Theme='cahier'|'epure'|'brume'
 export type IdeaStatus='new'|'review'|'planned'|'building'|'done'
@@ -18,7 +18,7 @@ export type FoodItem={id:string;name:string;price_xof:number;active:boolean}
 export type Order={id:string;total_xof:number;status:string;pickup_date?:string|null;pickup_slot?:string|null;created_at:string}
 export type Reward={id:string;name:string;points_cost:number;active:boolean;audience_role?:Role|null}
 export type SchoolInfo={id:string;name:string;city:string;director_id:string}
-export type SubscriptionInfo={id:string;plan:'simple'|'extra';status:string;billing_price_xof:number;current_period_end?:string|null;billing_provider?:'wave'|'paddle';paddle_customer_id?:string|null;paddle_subscription_id?:string|null}
+export type SubscriptionInfo={id:string;plan:'simple'|'extra';status:string;billing_price_xof:number;current_period_end?:string|null;billing_provider?:'wave'|'paddle'|'saspay';paddle_customer_id?:string|null;paddle_subscription_id?:string|null}
 export type ReferralInfo={code:string;status?:string}
 export type AppData={profile:Profile|null;studentId:string|null;school:SchoolInfo|null;subscription:SubscriptionInfo|null;referral:ReferralInfo|null;grades:Grade[];schedule:ScheduleRow[];payments:Payment[];points:PointEvent[];foodItems:FoodItem[];orders:Order[];rewards:Reward[];loading:boolean;error:string|null}
 

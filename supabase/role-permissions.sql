@@ -60,6 +60,7 @@ using ((select auth.uid()) = id)
 with check ((select auth.uid()) = id);
 
 revoke update on public.profiles from authenticated;
+revoke update on public.profiles from public, anon, authenticated;
 grant update(full_name,updated_at) on public.profiles to authenticated;
 
 -- FOOD

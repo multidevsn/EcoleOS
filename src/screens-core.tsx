@@ -12,7 +12,7 @@ async function loadSupabase(){
   return (await supabaseModulePromise).supabase
 }
 
-export function Food({role,mode,data,cart,setCart,checkout,message}:{role:Role,mode:Mode,data:AppData,cart:Record<string,number>,setCart:React.Dispatch<React.SetStateAction<Record<string,number>>>,checkout:()=>void,message:string}){
+export function Food({role,mode,data,cart,setCart,checkout,message,busy=false}:{role:Role,mode:Mode,data:AppData,cart:Record<string,number>,setCart:React.Dispatch<React.SetStateAction<Record<string,number>>>,checkout:(provider?:'wave'|'saspay')=>void,message:string,busy?:boolean}){
   const caps=foodCapabilities[role]
   const total=data.foodItems.reduce((sum,item)=>sum+item.price_xof*(cart[item.id]||0),0)
   const demoNotice=mode==='demo'
@@ -35,7 +35,7 @@ export function Food({role,mode,data,cart,setCart,checkout,message}:{role:Role,m
         <div className="food-grid">{data.foodItems.map(item=><div className="food-card" key={item.id}>
           <div className="food-img">{item.id==='burger'?'🍔':item.id==='sandwich'?'🥪':item.id==='pizza'?'🍕':'🥤'}</div>
           <div><h3>{item.name}</h3><b>{money(item.price_xof)}</b></div>
-          <div className="qty"><button aria-label={`Retirer un ${item.name}`} onClick={()=>setCart(c=>({...c,[item.id]:Math.max(0,(c[item.id]||0)-1)}))}>−</button><span>{cart[item.id]||0}</span><button aria-label={`Ajouter un ${item.name}`} onClick={()=>setCart(c=>({...c,[item.id]:(c[item.id]||0)+1}))}>+</button></div>
+          <div className="qty"><button aria-label={`Retirer un ${item.name}`} disabled={busy} onClick={()=>setCart(c=>({...c,[item.id]:Math.max(0,(c[item.id]||0)-1)}))}>−</button><span>{cart[item.id]||0}</span><button aria-label={`Ajouter un ${item.name}`} disabled={busy} onClick={()=>setCart(c=>({...c,[item.id]:(c[item.id]||0)+1}))}>+</button></div>
         </div>)}</div>
         <Panel title="Mes commandes"><OrdersTable orders={data.orders.slice(0,8)}/></Panel>
       </div>
@@ -44,9 +44,10 @@ export function Food({role,mode,data,cart,setCart,checkout,message}:{role:Role,m
         {data.foodItems.filter(item=>cart[item.id]).map(item=><div className="row" key={item.id}><span>{item.name} × {cart[item.id]}</span><b>{money(item.price_xof*cart[item.id])}</b></div>)}
         {!total&&<p className="muted">Ajoutez un plat pour commencer.</p>}
         <div className="total"><span>Total</span><strong>{money(total)}</strong></div>
-        <button className="primary full" disabled={!total} onClick={checkout}>{mode==='demo'?'Simuler la commande':'Payer avec Wave'}</button>
+        <button className="primary full" disabled={!total||busy} onClick={()=>checkout('wave')}>{mode==='demo'?'Simuler la commande':'Payer avec Wave'}</button>
+        {mode==='live'&&<button className="outline full" disabled={!total||busy} onClick={()=>checkout('saspay')}>Payer avec SasPay</button>}
         {message&&<div className="alert">{message}</div>}
-        <small className="muted">{mode==='demo'?'Simulation locale uniquement, sans débit réel.':'La commande est validée dès que Wave confirme le paiement.'}</small>
+        <small className="muted">{mode==='demo'?'Simulation locale uniquement, sans débit réel.':'La commande sera validée après confirmation du prestataire de paiement.'}</small>
       </aside>
     </div>
   </>
@@ -195,10 +196,11 @@ function loadPaddle(){
   return paddleScriptPromise
 }
 
-export function DirectorBilling({mode,data,session}:{mode:Mode,data:AppData,session:any}){
+export function DirectorBilling({mode,data,session,refreshKey=0}:{mode:Mode,data:AppData,session:any,refreshKey?:number}){
   const [msg,setMsg]=useState('')
   const [cycle,setCycle]=useState<any|null>(null)
   const [paddleBusy,setPaddleBusy]=useState(false)
+  const [saspayBusy,setSaspayBusy]=useState(false)
   const sub=data.subscription as any
   async function loadCycle(){
     if(mode==='demo'){setCycle({status:'due',amount_xof:6360,active_users:168,included_users:100,overage_users:68,period_start:new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().slice(0,10)});return}
@@ -207,7 +209,7 @@ export function DirectorBilling({mode,data,session}:{mode:Mode,data:AppData,sess
     const {data:rows,error}=await supabase.from('billing_cycles').select('id,status,amount_xof,active_users,included_users,overage_users,period_start,period_end,provider_checkout_url').eq('school_id',data.school.id).order('period_start',{ascending:false}).limit(1)
     if(!error)setCycle(rows?.[0]||null)
   }
-  useEffect(()=>{loadCycle()},[mode,data.school?.id])
+  useEffect(()=>{loadCycle()},[mode,data.school?.id,refreshKey])
   async function subscribePaddle(){
     if(mode==='demo'){setMsg('Mode démo : aucun paiement Paddle n’est lancé.');return}
     const token=session?.access_token;if(!token){setMsg('Session expirée.');return}
@@ -229,33 +231,44 @@ export function DirectorBilling({mode,data,session}:{mode:Mode,data:AppData,sess
     const response=await fetch('/api/paddle/director-portal',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({})})
     const result=await response.json();if(!response.ok){setMsg(errorMessage(result.error||new Error(`HTTP ${response.status}`),'Impossible d’ouvrir le portail Paddle.'));return}
     window.location.href=result.url
-  }  async function payUsage(){
+  }  async function payUsage(provider:'wave'|'saspay'='wave'){
     if(mode==='demo'){setMsg('Mode démo : paiement de cycle simulé, aucun débit réel.');return}
     const token=session?.access_token;if(!token){setMsg('Session expirée.');return}
-    setMsg('Création du paiement Wave…')
-    const res=await fetch('/api/wave/checkout',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({type:'billing_cycle',billing_cycle_id:cycle?.id})})
-    const result=await res.json();if(!res.ok){setMsg(errorMessage(result.error||new Error(`HTTP ${res.status}`),'Le paiement Wave n’a pas pu être créé.'));return}window.location.href=result.wave_launch_url
+    setSaspayBusy(provider==='saspay');setMsg(`Création du paiement ${provider==='saspay'?'SasPay':'Wave'}…`)
+    try{
+      const res=await fetch(provider==='saspay'?'/api/saspay/checkout':'/api/wave/checkout',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({type:'billing_cycle',billing_cycle_id:cycle?.id})})
+      const result=await res.json();if(!res.ok)throw new Error(result.error||`HTTP ${res.status}`)
+      window.location.href=provider==='saspay'?result.checkout_url:result.wave_launch_url
+    }catch(error:any){setMsg(errorMessage(error,`Le paiement ${provider==='saspay'?'SasPay':'Wave'} n’a pas pu être créé.`));setSaspayBusy(false)}
+  }
+  async function paySubscriptionSasPay(){
+    if(mode==='demo'){setMsg('Mode démo : aucun paiement réel ne sera lancé.');return}
+    if(!sub?.id){setMsg('Abonnement introuvable.');return}
+    const token=session?.access_token;if(!token){setMsg('Session expirée.');return}
+    setSaspayBusy(true);setMsg('Création du paiement SasPay…')
+    try{const res=await fetch('/api/saspay/checkout',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({type:'school_subscription',subscription_id:sub.id})});const result=await res.json();if(!res.ok)throw new Error(result.error||`HTTP ${res.status}`);window.location.href=result.checkout_url}
+    catch(error:any){setMsg(errorMessage(error,'Le paiement SasPay n’a pas pu être créé.'));setSaspayBusy(false)}
   }
   const base=Number(sub?.billing_price_xof||0)
   const usageOnly=sub?.billing_provider==='paddle'
   const projected=Math.max(0,Number(cycle?.amount_xof||base)-(usageOnly?base:0))
   const canPay=!!cycle&&['due','past_due'].includes(cycle.status)
   const canSubscribe=!!sub&&sub.status==='pending'&&mode!=='demo'
-  return <><div className="section-intro"><div><span className="eyebrow">Abonnement de l’école</span><h1>{data.school?.name||'Mon établissement'}</h1><p>Le forfait logiciel est géré séparément des frais d’usage, de cantine et de scolarité.</p></div><div className="pill">{sub?.plan==='extra'?'Extra':'Simple'}</div></div><div className="grid two"><div className="panel"><div className="panel-head"><h3>Forfait logiciel</h3><span className="status">{sub?.status||'—'}</span></div><div className="plan-summary"><strong>Plan {sub?.plan==='extra'?'Extra':'Simple'}</strong><b>{sub?.billing_provider==='paddle'?'Facturé par Paddle':shortMoney(base)+' / mois'}</b><span>{sub?.billing_provider==='paddle'?'Abonnement récurrent Paddle':sub?.status==='active'?'Abonnement existant conservé sur Wave':'Choisissez Paddle pour activer le forfait récurrent.'}</span>{sub?.current_period_end&&<small>Prochaine échéance : {shortDate(sub.current_period_end)}</small>}</div>{canSubscribe&&<button className="primary" disabled={paddleBusy} onClick={subscribePaddle}>{paddleBusy?'Paddle Checkout…':'S’abonner avec Paddle'}</button>}{sub?.billing_provider==='paddle'&&sub?.paddle_customer_id&&sub?.paddle_subscription_id&&<button className="outline" onClick={managePaddle}>Gérer mon abonnement Paddle</button>}{sub?.status==='pending'&&mode!=='demo'&&!paddleToken&&<div className="alert">Configure VITE_PADDLE_CLIENT_TOKEN et le prix Paddle du forfait {sub?.plan==='extra'?'Extra':'Simple'}.</div>}{sub?.status==='active'&&sub?.billing_provider!=='paddle'&&<small className="muted">Ce forfait actif reste sur Wave. La migration d’un abonnement existant doit être planifiée pour éviter deux prélèvements.</small>}</div><div className="panel"><div className="panel-head"><h3>Cycle d’usage</h3><span className="status">{cycle?.status||'—'}</span></div><div className="plan-summary"><strong>{shortMoney(projected)} / mois</strong><b>{cycle?.active_users||0} utilisateurs actifs</b><span>{cycle?.overage_users||0} utilisateur(s) au-dessus du quota{usageOnly?' · forfait logiciel déjà réglé séparément':` · base ${shortMoney(base)}`}</span>{cycle?.period_end&&<small>Période : {shortDate(cycle.period_start)} → {shortDate(cycle.period_end)}</small>}</div><button className="primary" disabled={!canPay||!sub||sub.status==='pending'} onClick={payUsage}>{usageOnly?'Payer les frais d’usage avec Wave':cycle?.status==='past_due'?'Régler le cycle en retard avec Wave':'Payer le cycle avec Wave'}</button>{cycle?.provider_checkout_url&&<small className="muted">Un checkout Wave a déjà été préparé pour ce cycle.</small>}</div></div><div className="panel"><div className="panel-head"><h3>Programme de parrainage</h3><Gift size={18}/></div><div className="referral-banner"><b>{data.referral?.code||'Code généré après inscription'}</b><span>Partagez votre code à un autre directeur. La récompense est déclenchée après inscription et premier abonnement payé.</span></div></div>{msg&&<div className="alert">{msg}</div>}</>
+  return <><div className="section-intro"><div><span className="eyebrow">Abonnement de l’école</span><h1>{data.school?.name||'Mon établissement'}</h1><p>Le forfait logiciel est géré séparément des frais d’usage, de cantine et de scolarité.</p></div><div className="pill">{sub?.plan==='extra'?'Extra':'Simple'}</div></div><div className="grid two"><div className="panel"><div className="panel-head"><h3>Forfait logiciel</h3><span className="status">{sub?.status||'—'}</span></div><div className="plan-summary"><strong>Plan {sub?.plan==='extra'?'Extra':'Simple'}</strong><b>{sub?.billing_provider==='paddle'?'Facturé par Paddle':shortMoney(base)+' / mois'}</b><span>{sub?.billing_provider==='paddle'?'Abonnement récurrent Paddle':sub?.billing_provider==='saspay'?'Forfait payé avec SasPay · renouvellement manuel':sub?.status==='active'?'Abonnement existant conservé sur Wave':'Choisissez Paddle pour activer le forfait récurrent.'}</span>{sub?.current_period_end&&<small>Prochaine échéance : {shortDate(sub.current_period_end)}</small>}</div>{canSubscribe&&<button className="primary" disabled={paddleBusy} onClick={subscribePaddle}>{paddleBusy?'Paddle Checkout…':'S’abonner avec Paddle'}</button>}{canSubscribe&&<><button className="outline" disabled={saspayBusy} onClick={paySubscriptionSasPay}>{saspayBusy?'SasPay…':'Payer une fois avec SasPay'}</button><small className="muted">SasPay lance un paiement ponctuel de 31 jours ; le renouvellement automatique n’est pas activé par ce paiement.</small></>}{sub?.billing_provider==='paddle'&&sub?.paddle_customer_id&&sub?.paddle_subscription_id&&<button className="outline" onClick={managePaddle}>Gérer mon abonnement Paddle</button>}{sub?.status==='pending'&&mode!=='demo'&&!paddleToken&&<div className="alert">Configure VITE_PADDLE_CLIENT_TOKEN et le prix Paddle du forfait {sub?.plan==='extra'?'Extra':'Simple'}.</div>}{sub?.status==='active'&&(!sub?.billing_provider||sub?.billing_provider==='wave')&&<small className="muted">Ce forfait actif reste sur Wave. La migration d’un abonnement existant doit être planifiée pour éviter deux prélèvements.</small>}</div><div className="panel"><div className="panel-head"><h3>Cycle d’usage</h3><span className="status">{cycle?.status||'—'}</span></div><div className="plan-summary"><strong>{shortMoney(projected)} / mois</strong><b>{cycle?.active_users||0} utilisateurs actifs</b><span>{cycle?.overage_users||0} utilisateur(s) au-dessus du quota{usageOnly?' · forfait logiciel déjà réglé séparément':` · base ${shortMoney(base)}`}</span>{cycle?.period_end&&<small>Période : {shortDate(cycle.period_start)} → {shortDate(cycle.period_end)}</small>}</div><button className="primary" disabled={!canPay||!sub||sub.status==='pending'} onClick={()=>payUsage('wave')}>{usageOnly?'Payer les frais d’usage avec Wave':cycle?.status==='past_due'?'Régler le cycle en retard avec Wave':'Payer le cycle avec Wave'}</button><button className="outline" disabled={!canPay||!sub||sub.status==='pending'||saspayBusy} onClick={()=>payUsage('saspay')}>{saspayBusy?'Préparation SasPay…':usageOnly?'Payer les frais d’usage avec SasPay':cycle?.status==='past_due'?'Régler le cycle en retard avec SasPay':'Payer le cycle avec SasPay'}</button>{cycle?.provider_checkout_url&&<small className="muted">Un checkout de paiement a déjà été préparé pour ce cycle.</small>}</div></div><div className="panel"><div className="panel-head"><h3>Programme de parrainage</h3><Gift size={18}/></div><div className="referral-banner"><b>{data.referral?.code||'Code généré après inscription'}</b><span>Partagez votre code à un autre directeur. La récompense est déclenchée après inscription et premier abonnement payé.</span></div></div>{msg&&<div className="alert">{msg}</div>}</>
 }
-export function Payments({role,mode,data,session}:{role:Role,mode:Mode,data:AppData,session:any}){
+export function Payments({role,mode,data,session,refreshKey=0}:{role:Role,mode:Mode,data:AppData,session:any,refreshKey?:number}){
   const [msg,setMsg]=useState('')
   if(!['student','parent','admin','director'].includes(role))return <div className="panel"><div className="empty">Les paiements ne sont pas disponibles pour ce rôle.</div></div>
-  if(role==='director') return <DirectorBilling mode={mode} data={data} session={session}/>
+  if(role==='director') return <DirectorBilling mode={mode} data={data} session={session} refreshKey={refreshKey}/>
   const due=data.payments.filter(p=>p.status==='pending').sort((a,b)=>a.due_date.localeCompare(b.due_date))[0]
-  async function pay(paymentId:string){
-    if(mode==='demo'){setMsg('Mode démo : ce paiement est fictif, aucun débit Wave ne sera effectué.');return}
+  async function pay(paymentId:string,provider:'wave'|'saspay'='wave'){
+    if(mode==='demo'){setMsg('Mode démo : ce paiement est fictif, aucun débit réel ne sera effectué.');return}
     const token=session?.access_token;if(!token){setMsg('Session expirée.');return}
-    setMsg('Création du paiement Wave…')
-    const res=await fetch('/api/wave/checkout',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({type:'school_payment',payment_id:paymentId})})
-    const result=await res.json();if(!res.ok){setMsg(errorMessage(result.error||new Error(`HTTP ${res.status}`),'Le paiement Wave n’a pas pu être créé.'));return}window.location.href=result.wave_launch_url
+    setMsg(`Création du paiement ${provider==='saspay'?'SasPay':'Wave'}…`)
+    try{const res=await fetch(provider==='saspay'?'/api/saspay/checkout':'/api/wave/checkout',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({type:'school_payment',payment_id:paymentId})});const result=await res.json();if(!res.ok)throw new Error(result.error||`HTTP ${res.status}`);window.location.href=provider==='saspay'?result.checkout_url:result.wave_launch_url}
+    catch(error:any){setMsg(errorMessage(error,`Le paiement ${provider==='saspay'?'SasPay':'Wave'} n’a pas pu être créé.`))}
   }
-  return <><div className="payment-banner"><CircleDollarSign size={30}/><div><b>Échéancier scolaire</b><span>{due?`Prochaine échéance · ${new Intl.DateTimeFormat('fr-FR').format(new Date(due.due_date))}`:'Aucune échéance en attente'}</span></div><strong>{shortMoney(due?.amount_xof||0)}</strong></div><Panel title={role==='parent'?'Paiements de votre enfant':'Mes paiements'}>{data.payments.length?data.payments.map(p=><div className="payment-row" key={p.id}><span>{p.description}</span><b>{money(p.amount_xof)}</b><small className={p.status==='succeeded'?'ok':'pending'}>{p.status==='succeeded'?'Payé':p.status==='failed'?'Échec':p.status==='expired'?'Expiré':'À payer'}</small><button className="text-btn" disabled={p.status!=='pending'} onClick={()=>pay(p.id)}>{p.status==='succeeded'?'Reçu':p.status==='pending'?'Payer':'—'}</button></div>):<Empty text="Aucun paiement"/>}</Panel>{msg&&<div className="alert">{msg}</div>}</>}
+  return <><div className="payment-banner"><CircleDollarSign size={30}/><div><b>Échéancier scolaire</b><span>{due?`Prochaine échéance · ${new Intl.DateTimeFormat('fr-FR').format(new Date(due.due_date))}`:'Aucune échéance en attente'}</span></div><strong>{shortMoney(due?.amount_xof||0)}</strong></div><Panel title={role==='parent'?'Paiements de votre enfant':'Mes paiements'}>{data.payments.length?data.payments.map(p=><div className="payment-row" key={p.id}><span>{p.description}</span><b>{money(p.amount_xof)}</b><small className={p.status==='succeeded'?'ok':'pending'}>{p.status==='succeeded'?'Payé':p.status==='failed'?'Échec':p.status==='expired'?'Expiré':'À payer'}</small>{p.status==='pending'?<div className="payment-actions"><button className="text-btn" onClick={()=>pay(p.id,'wave')}>Wave</button><button className="text-btn" onClick={()=>pay(p.id,'saspay')}>SasPay</button></div>:<button className="text-btn" disabled>{p.status==='succeeded'?'Reçu':'—'}</button>}</div>):<Empty text="Aucun paiement"/>}</Panel>{msg&&<div className="alert">{msg}</div>}</>}
 
 
 export function Account({role,mode,data,session,theme,onThemeChange,onSaved}:{role:Role,mode:Mode,data:AppData,session:any,theme:Theme,onThemeChange:(theme:Theme)=>void,onSaved:(profile:Partial<Profile>)=>void}){

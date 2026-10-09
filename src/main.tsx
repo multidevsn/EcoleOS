@@ -556,6 +556,8 @@ function App(){
   const [schoolSignup,setSchoolSignup]=useState(false)
   const [cart,setCart]=useState<Record<string,number>>({})
   const [orderMsg,setOrderMsg]=useState('')
+  const [checkoutBusy,setCheckoutBusy]=useState(false)
+  const [paymentNotice,setPaymentNotice]=useState('')
   const [data,setData]=useState<AppData>({profile:null,studentId:null,school:null,subscription:null,referral:null,grades:[],schedule:[],payments:[],points:[],foodItems:[],orders:[],rewards:[],loading:true,error:null})
   const hydratedTabs=useRef<Set<string>>(new Set())
   // Compteur de relance manuelle : le bouton « Réessayer » d'une erreur de chargement
@@ -589,6 +591,40 @@ function App(){
     })()
     return()=>{alive=false;unsubscribe?.()}
   },[mode])
+  useEffect(()=>{
+    if(mode!=='live'||!session?.access_token)return
+    const url=new URL(window.location.href)
+    if(url.searchParams.get('payment')!=='saspay-return')return
+    const type=url.searchParams.get('type')||''
+    const resource_id=url.searchParams.get('resource_id')||''
+    let alive=true
+    const clearReturnParams=()=>{
+      const cleaned=new URL(window.location.href)
+      cleaned.searchParams.delete('payment');cleaned.searchParams.delete('type');cleaned.searchParams.delete('resource_id')
+      window.history.replaceState({},'',cleaned.pathname+cleaned.search+cleaned.hash)
+    }
+    setPaymentNotice('Vérification du paiement SasPay…')
+    ;(async()=>{
+      try{
+        const response=await fetch('/api/saspay/verify',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${session.access_token}`},body:JSON.stringify({type,resource_id})})
+        const result=await response.json()
+        if(!response.ok){
+          // Une erreur temporaire ne doit pas effacer les références permettant de réessayer.
+          if(response.status>=400&&response.status<500&&response.status!==401&&response.status!==403)clearReturnParams()
+          throw new Error(result.error||`HTTP ${response.status}`)
+        }
+        if(!alive)return
+        if(result.confirmed){clearReturnParams();setPaymentNotice('Paiement confirmé par SasPay. Les données sont actualisées.');setTab(type==='food'?'food':'payments');setReloadToken(value=>value+1)}
+        else {
+          // Garder les paramètres tant que le prestataire est encore en attente : un rechargement
+          // pourra refaire la vérification. Les échecs définitifs n'ont plus besoin de ces paramètres.
+          if(result.pending===false)clearReturnParams()
+          setPaymentNotice(result.message||'Paiement en attente de confirmation SasPay. Rechargez la page dans quelques instants si nécessaire.')
+        }
+      }catch(error:any){if(alive)setPaymentNotice(errorMessage(error,'Impossible de vérifier le paiement SasPay.'))}
+    })()
+    return()=>{alive=false}
+  },[mode,session?.access_token])
   useEffect(()=>{
     if(mode==='live'&&data.profile?.role&&role!==data.profile.role)setRole(data.profile.role)
   },[mode,data.profile?.role,role])
@@ -740,7 +776,7 @@ function App(){
       }
     })()
     return()=>{alive=false}
-  },[mode,tab,session?.user?.id,role,data.profile?.role,data.studentId,data.homePending?.length])
+  },[mode,tab,session?.user?.id,role,data.profile?.role,data.studentId,data.homePending?.length,reloadToken])
   const reload=()=>setReloadToken(t=>t+1)
   function enterDemo(r:Role){try{sessionStorage.setItem('ecole-os-demo-role',r)}catch{}setCart({});setOrderMsg('');setTab('home');setRole(r);setMode('demo')}
   if(schoolSignup)return <SchoolOnboarding onBack={()=>setSchoolSignup(false)} onDone={()=>{setSchoolSignup(false);setTab('home')}}/>
@@ -751,9 +787,9 @@ function App(){
   const primaryItems=availableNav.filter(([id])=>primaryTabs[role].includes(id))
   const secondaryItems=availableNav.filter(([id])=>!primaryTabs[role].includes(id) && id!=='account')
   async function logout(){const supabase=await loadSupabase();await supabase.auth.signOut();setMode('live')}
-  async function checkout(){
+  async function checkout(provider:'wave'|'saspay'='wave'){
     const items=Object.entries(cart).filter(([,q])=>q).map(([id,quantity])=>({id,quantity}))
-    if(!items.length)return
+    if(!items.length||checkoutBusy)return
     if(mode==='demo'){
       const total_xof=items.reduce((sum,item)=>{
         const foodItem=data.foodItems.find(x=>x.id===item.id)
@@ -766,12 +802,17 @@ function App(){
       setOrderMsg('Commande de démonstration simulée localement pour cette session. Aucun paiement réel n’a été effectué.')
       return
     }
-    setOrderMsg('Création du paiement Wave…')
-    const token=session?.access_token
-    const res=await fetch('/api/wave/checkout',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({type:'food',items,pickup_date:isoDate(new Date()),pickup_slot:'12:30–12:40'})})
-    const result=await res.json()
-    if(!res.ok){setOrderMsg(errorMessage(result.error||new Error(`HTTP ${res.status}`),'Impossible de créer le paiement.'));return}
-    window.location.href=result.wave_launch_url
+    setCheckoutBusy(true)
+    setOrderMsg(`Création du paiement ${provider==='saspay'?'SasPay':'Wave'}…`)
+    try{
+      const token=session?.access_token
+      const res=await fetch(provider==='saspay'?'/api/saspay/checkout':'/api/wave/checkout',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({type:'food',items,pickup_date:isoDate(new Date()),pickup_slot:'12:30–12:40'})})
+      const result=await res.json()
+      if(!res.ok)throw new Error(result.error||`HTTP ${res.status}`)
+      const checkoutUrl=provider==='saspay'?result.checkout_url:result.wave_launch_url
+      if(typeof checkoutUrl!=='string'||!checkoutUrl.startsWith('https://'))throw new Error('Le prestataire n’a pas renvoyé une URL de paiement sécurisée.')
+      window.location.href=checkoutUrl
+    }catch(error:any){setOrderMsg(errorMessage(error,`Impossible de créer le paiement ${provider==='saspay'?'SasPay':'Wave'}.`));setCheckoutBusy(false)}
   }
   function switchMode(next:Mode){if(next==='live'){try{sessionStorage.removeItem('ecole-os-demo-role')}catch{}}setMode(next);setTab('home');setCart({});setOrderMsg('');setPlatformAdmin(next==='demo'&&role==='admin');if(next==='live')setRole('student')}
   return <div className="app">
@@ -793,14 +834,15 @@ function App(){
     <section className="main">
       <header className="topbar"><button className="mobile-menu" aria-label="Ouvrir le menu" onClick={()=>setMenuOpen(v=>!v)}>{menuOpen?<X/>:<Menu/>}</button><h2>{nav.find(n=>n[0]===tab)?.[1]}</h2><time className="today">{frToday()}</time><div className="avatar" aria-hidden="true">{firstLetters(profileName)}</div></header>
       <div className="content">
+        {paymentNotice&&<div className="alert" role="status">{paymentNotice}</div>}
         {data.loading&&<div className="skeleton" role="status" aria-label="Chargement de votre espace"><i/><i/><i/></div>}
         {data.error&&<ErrorNotice error={data.error} onRetry={reload}/>}
         {!data.loading&&<>
           {tab==='home'&&<Home role={role} mode={mode} name={profileName} data={data} setTab={setTab}/>}
-          {tab==='food'&&hydratingTab==='food'&&<ScreenFallback/>}{tab==='food'&&hydratingTab!=='food'&&<React.Suspense fallback={<ScreenFallback/>}><FoodScreen role={role} mode={mode} data={data} cart={cart} setCart={setCart} checkout={checkout} message={orderMsg}/></React.Suspense>}
+          {tab==='food'&&hydratingTab==='food'&&<ScreenFallback/>}{tab==='food'&&hydratingTab!=='food'&&<React.Suspense fallback={<ScreenFallback/>}><FoodScreen role={role} mode={mode} data={data} cart={cart} setCart={setCart} checkout={checkout} message={orderMsg} busy={checkoutBusy}/></React.Suspense>}
           {tab==='schedule'&&hydratingTab==='schedule'&&<ScreenFallback/>}{tab==='schedule'&&hydratingTab!=='schedule'&&<React.Suspense fallback={<ScreenFallback/>}><ScheduleScreen role={role} mode={mode} data={data}/></React.Suspense>}
           {tab==='grades'&&hydratingTab==='grades'&&<ScreenFallback/>}{tab==='grades'&&hydratingTab!=='grades'&&<React.Suspense fallback={<ScreenFallback/>}><GradesScreen role={role} data={data}/></React.Suspense>}
-          {tab==='payments'&&hydratingTab==='payments'&&<ScreenFallback/>}{tab==='payments'&&hydratingTab!=='payments'&&<React.Suspense fallback={<ScreenFallback/>}><PaymentsScreen role={role} mode={mode} data={data} session={session}/></React.Suspense>}
+          {tab==='payments'&&hydratingTab==='payments'&&<ScreenFallback/>}{tab==='payments'&&hydratingTab!=='payments'&&<React.Suspense fallback={<ScreenFallback/>}><PaymentsScreen role={role} mode={mode} data={data} session={session} refreshKey={reloadToken}/></React.Suspense>}
           {tab==='rewards'&&hydratingTab==='rewards'&&<ScreenFallback/>}{tab==='rewards'&&hydratingTab!=='rewards'&&<React.Suspense fallback={<ScreenFallback/>}><RewardsScreen role={role} mode={mode} data={data}/></React.Suspense>}
           {tab==='members'&&<React.Suspense fallback={<ScreenFallback/>}><MembersScreen role={role} session={session} mode={mode}/></React.Suspense>}
           {tab==='agora'&&<React.Suspense fallback={<ScreenFallback/>}><AgoraScreen role={role} mode={mode} session={session} profile={data.profile} schoolId={data.school?.id||null}/></React.Suspense>}
