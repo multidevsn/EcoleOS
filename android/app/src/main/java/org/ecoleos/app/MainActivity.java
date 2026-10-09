@@ -439,9 +439,10 @@ public final class MainActivity extends Activity {
         }
 
         @Override
-        public void onConsoleMessage(android.webkit.ConsoleMessage consoleMessage) {
+        public boolean onConsoleMessage(android.webkit.ConsoleMessage consoleMessage) {
             android.util.Log.w("EcoleOS", consoleMessage.message()
                     + " @" + consoleMessage.sourceId() + ":" + consoleMessage.lineNumber());
+            return true;
         }
 
         @Override
