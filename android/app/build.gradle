@@ -20,7 +20,7 @@ def hasSigningConfig = ["storeFile", "storePassword", "keyAlias", "keyPassword"]
 
 android {
     namespace "org.ecoleos.app"
-    compileSdk 37
+    compileSdk 36
 
     defaultConfig {
         applicationId "org.ecoleos.app"
