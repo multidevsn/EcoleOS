@@ -1,4 +1,4 @@
-# École OS — V1 multi-utilisateurs
+# ScholaSync — gestion scolaire multi-utilisateurs
 
 V1 React/Vite reliée à Supabase/PostgreSQL avec mode démo, authentification réelle, permissions par rôle et préparation de l’intégration Wave côté serveur.
 
@@ -125,7 +125,7 @@ Wave currently uses Checkout Sessions + webhooks in this project. The autopilot 
 
 La v2 ajoute l'onglet **Communauté** pour remplacer la dispersion entre groupes de messagerie :
 - espace **Annonces de l'établissement** : messages du personnel autorisé (administration, direction, professeurs) ;
-- espace **Communauté École OS** : échanges utiles entre membres d'une même école ;
+- espace **Communauté ScholaSync** : échanges utiles entre membres d'une même école ;
 - lecture en temps réel via Supabase Realtime ;
 - compteur de lecture par espace côté base ;
 - limitation des messages à 2 000 caractères ;
@@ -242,15 +242,9 @@ comme compromise. `.gitignore` couvre désormais `keyPublish/`, mais cela n'effa
 l'historique.
 
 
-## 2026-10-09 — Marque Ecole.Online, domaine de premier niveau et sandbox SasPay
+## Historique du 2026-10-09 — ancienne marque Ecole.Online (remplacée par ScholaSync)
 
-- **Marque & domaine** : le produit s'appelle **Ecole.Online** (titre, manifeste, APK par
-  défaut `https://ecole.online`). « os » évoquait un système d'exploitation ; un domaine de
-  premier niveau est plus professionnel. Côté Vercel : *Project → Settings → Domains* →
-  ajouter `ecole.online` (et `www`), puis créer les enregistrements DNS indiqués (A/ALIAS +
-  CNAME). Côté serveur, renseigner `APP_URL=https://ecole.online` pour que les URLs de
-  retour SasPay et les reçus pointent vers le bon domaine. L'APK reste surchargeable :
-  `./gradlew assembleRelease -PecoleosServerOrigin=https://...`.
+- **Marque & domaine** : Ecole.Online a été abandonné le 10 octobre 2026 au profit de **ScholaSync**. Le domaine cible est `https://scholasync.com`. Il faut d'abord l'enregistrer et le rattacher au projet Vercel (avec `www` si souhaité), puis configurer DNS et `APP_URL`. Jusque-là, conserver `https://ecole-os.vercel.app` comme origine de secours afin de ne pas casser l'APK ni les retours de paiement. Le paramètre de build reste disponible : `./gradlew assembleRelease -PecoleosServerOrigin=https://scholasync.com`.
 - **Sandbox SasPay** : tant que `SASPAY_API_KEY` n'est pas renseignée dans Vercel, le
   parcours de paiement bascule en sandbox : push simulée, validation, puis confirmation via
   `/api/saspay/sandbox/approve` qui marque réellement la ressource payée (même logique que le
