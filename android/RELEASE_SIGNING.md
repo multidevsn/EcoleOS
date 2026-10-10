@@ -1,4 +1,4 @@
-# Signer le build release d'École OS
+# Signer le build release d'ScholaSync
 
 Le point 1 de l'audit signale que seul le build **debug** existe
 (`android:debuggable="true"`, suffixe `-debug`). Un build debug permet à
