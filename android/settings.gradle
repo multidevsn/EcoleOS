@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "EcoleOS"
+rootProject.name = "ScholaSync"
 include(":app")
