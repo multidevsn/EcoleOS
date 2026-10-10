@@ -10,6 +10,7 @@ import metricsAction from './metrics/_action.js'
 import onboardingSchool from './onboarding/_school.js'
 import paddleAction from './paddle/_action.js'
 import saspayCheckout from './saspay/_checkout.js'
+import saspaySandboxApprove from './saspay/_sandbox.js'
 import saspayVerify from './saspay/_verify.js'
 import waveCheckout from './wave/_checkout.js'
 
@@ -36,6 +37,7 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
     case '/api/members/validate': return membersValidate(req, res)
     case '/api/onboarding/school': return onboardingSchool(req, res)
     case '/api/saspay/checkout': return saspayCheckout(req, res)
+    case '/api/saspay/sandbox/approve': return saspaySandboxApprove(req, res)
     case '/api/saspay/verify': return saspayVerify(req, res)
     case '/api/wave/checkout': return waveCheckout(req, res)
     default: return res.status(404).json({ error: 'Route API introuvable.' })

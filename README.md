@@ -240,3 +240,21 @@ sur votre machine. À faire : sortir ces fichiers du dépôt, purger l'historiqu
 générer une nouvelle clé — toute clé déjà poussée sur un dépôt public doit être considérée
 comme compromise. `.gitignore` couvre désormais `keyPublish/`, mais cela n'efface pas
 l'historique.
+
+
+## 2026-10-09 — Marque Ecole.Online, domaine de premier niveau et sandbox SasPay
+
+- **Marque & domaine** : le produit s'appelle **Ecole.Online** (titre, manifeste, APK par
+  défaut `https://ecole.online`). « os » évoquait un système d'exploitation ; un domaine de
+  premier niveau est plus professionnel. Côté Vercel : *Project → Settings → Domains* →
+  ajouter `ecole.online` (et `www`), puis créer les enregistrements DNS indiqués (A/ALIAS +
+  CNAME). Côté serveur, renseigner `APP_URL=https://ecole.online` pour que les URLs de
+  retour SasPay et les reçus pointent vers le bon domaine. L'APK reste surchargeable :
+  `./gradlew assembleRelease -PecoleosServerOrigin=https://...`.
+- **Sandbox SasPay** : tant que `SASPAY_API_KEY` n'est pas renseignée dans Vercel, le
+  parcours de paiement bascule en sandbox : push simulée, validation, puis confirmation via
+  `/api/saspay/sandbox/approve` qui marque réellement la ressource payée (même logique que le
+  webhook, `finalizeSasPayPayment`). Dès que la clé réelle est configurée, la sandbox se
+  désactive et le flux SasPay réel reprend. Variables serveur attendues : `SASPAY_API_KEY`,
+  `SASPAY_WEBHOOK_SECRET`, `APP_URL`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`,
+  `SUPABASE_SECRET_KEY`.

@@ -21,3 +21,19 @@ export function MiniBar({value,max,label,meta}:{value:number;max:number;label:st
   const pct=max>0?Math.min(100,Math.max(0,value/max*100)):0
   return <div className="ops-bar"><div className="ops-bar-head"><b>{label}</b><span>{meta}</span></div><div className="ops-bar-track"><i style={{width:`${pct}%`}}/></div></div>
 }
+
+export function saspaySleep(ms:number){return new Promise<void>(resolve=>{setTimeout(resolve,ms)})}
+export async function saspaySandboxApprove(token:string,result:any){
+  const res=await fetch('/api/saspay/sandbox/approve',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({type:result.type,resource_id:result.resource_id,checkout_id:result.checkout_id,amount_xof:result.amount_xof})})
+  const body=await res.json().catch(()=>null)
+  if(!res.ok)throw new Error(body?.error||`HTTP ${res.status}`)
+  return body
+}
+/** Parcours sandbox visible : push simulée, validation, puis confirmation serveur. */
+export async function runSaspaySandbox(result:any,token:string,setMsg:(m:string)=>void){
+  setMsg('Sandbox SasPay : push de paiement envoyée sur le téléphone…')
+  await saspaySleep(900)
+  setMsg('Sandbox SasPay : validation de la transaction…')
+  await saspaySleep(900)
+  await saspaySandboxApprove(token,result)
+}
