@@ -41,7 +41,7 @@ import java.util.Locale;
 
 public final class MainActivity extends Activity {
     /**
-     * Origine du serveur École OS.
+     * Origine du serveur ScholaSync.
      *
      * Ce n'est PAS un secret : c'est l'adresse publique du déploiement, envoyée en clair
      * dans chaque requête HTTPS et présente dans les journaux du serveur. La "masquer" par
@@ -52,7 +52,7 @@ public final class MainActivity extends Activity {
      * URL valide : d'où le symptôme « la démo marche, la connexion non »).
      *
      * La valeur est maintenant une constante lisible, surchargeable au build sans toucher
-     * au code :  ./gradlew assembleRelease -PecoleosServerOrigin=https://mon-ecole.vercel.app
+     * au code :  ./gradlew assembleRelease -PecoleosServerOrigin=https://scholasync.com
      * Elle est de toute façon revalidée par {@link #normalizeOrigin(String)} avant usage.
      */
     private static final String TRUSTED_SERVER_ORIGIN = BuildConfig.SERVER_ORIGIN;
@@ -440,7 +440,7 @@ public final class MainActivity extends Activity {
 
         @Override
         public boolean onConsoleMessage(android.webkit.ConsoleMessage consoleMessage) {
-            android.util.Log.w("EcoleOS", consoleMessage.message()
+            android.util.Log.w("ScholaSync", consoleMessage.message()
                     + " @" + consoleMessage.sourceId() + ":" + consoleMessage.lineNumber());
             return true;
         }
