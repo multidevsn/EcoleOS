@@ -138,7 +138,7 @@ async function syncSupabase(period: ReturnType<typeof monthBounds>): Promise<Pro
   }
 }
 
-// Resend et Twilio ont été retirés : École OS n'envoie ni email ni SMS. Ces deux
+// Resend et Twilio ont été retirés : ScholaSync n'envoie ni email ni SMS. Ces deux
 // intégrations ne servaient qu'à lire un coût fournisseur (et Resend paginait jusqu'à
 // 1 000 pages d'historique pour ça). Elles sont réactivables en réintroduisant un
 // ProviderSnapshot dans syncProviderCosts le jour où une vraie notification est ajoutée.
