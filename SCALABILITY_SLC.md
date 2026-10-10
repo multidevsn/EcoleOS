@@ -1,4 +1,4 @@
-# École OS — Scalabilité UX / SLC
+# ScholaSync — Scalabilité UX / SLC
 
 ## Principe
 

@@ -42,7 +42,7 @@ type Rule = { match: RegExp; kind: ErrorKind; message: string; retryable?: boole
  */
 const RULES: Rule[] = [
   // --- Version de l'application obsolète après un déploiement ---
-  { match: STALE_CHUNK, kind: 'stale_version', message: 'Une nouvelle version d’École OS est disponible. Rechargez la page pour continuer.', retryable: true },
+  { match: STALE_CHUNK, kind: 'stale_version', message: 'Une nouvelle version d’ScholaSync est disponible. Rechargez la page pour continuer.', retryable: true },
 
   // --- Réseau ---
   { match: /Failed to fetch|NetworkError when attempting to fetch|Load failed|ERR_INTERNET_DISCONNECTED|ERR_NETWORK_CHANGED|net::/i, kind: 'network', message: 'Connexion Internet indisponible. Vérifiez votre réseau puis réessayez.', retryable: true },
@@ -72,7 +72,7 @@ const RULES: Rule[] = [
   { match: /invalid input syntax|22P02/i, kind: 'validation', message: 'Le format d’une information saisie n’est pas reconnu.' },
 
   // --- Serveur ---
-  { match: /\b50[0-9]\b|Internal Server Error|Bad Gateway|Service Unavailable|Gateway Timeout/i, kind: 'server', message: 'Le serveur École OS rencontre un problème. Réessayez dans un instant.', retryable: true },
+  { match: /\b50[0-9]\b|Internal Server Error|Bad Gateway|Service Unavailable|Gateway Timeout/i, kind: 'server', message: 'Le serveur ScholaSync rencontre un problème. Réessayez dans un instant.', retryable: true },
   { match: /\b404\b|Not Found/i, kind: 'server', message: 'Ce service est introuvable sur le serveur. Vérifiez que le déploiement est à jour.', retryable: true },
   { match: /\b(401|403)\b/i, kind: 'permission', message: 'Accès refusé. Reconnectez-vous si nécessaire.' },
 ]
@@ -104,10 +104,10 @@ const GENERIC: Record<ErrorKind, string> = {
   auth: 'L’authentification a échoué. Réessayez.',
   permission: 'Cette action n’est pas autorisée pour votre compte.',
   missing_schema: 'Ce service n’est pas encore activé sur ce serveur.',
-  network: 'Connexion impossible avec le serveur École OS.',
-  server: 'Le serveur École OS rencontre un problème. Réessayez dans un instant.',
+  network: 'Connexion impossible avec le serveur ScholaSync.',
+  server: 'Le serveur ScholaSync rencontre un problème. Réessayez dans un instant.',
   validation: 'Les informations saisies ne sont pas acceptées.',
-  stale_version: 'Une nouvelle version d’École OS est disponible. Rechargez la page.',
+  stale_version: 'Une nouvelle version d’ScholaSync est disponible. Rechargez la page.',
   unknown: 'Une erreur est survenue. Réessayez, et prévenez l’administration si le problème persiste.',
 }
 

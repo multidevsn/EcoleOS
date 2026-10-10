@@ -127,7 +127,7 @@ export function SchoolMembers({role,session,mode}:{role:Role,session:any,mode:Mo
   if(!canManage)return <div className="panel"><div className="empty">La gestion des membres est réservée à la direction et à l’administration.</div></div>
   const roleOrder:[string,string][]=[['student','Élèves'],['parent','Parents'],['teacher','Professeurs'],['admin','Administration'],['cafeteria','Cantine']]
   return <>
-    <div className="section-intro"><div><span className="eyebrow">Annuaire établissement</span><h1>Membres</h1><p>Créez les personnes une fois, puis laissez École OS gérer leur compte, leur rôle et les relations familiales.</p></div><button className="outline" onClick={load} disabled={loading||busy}><RefreshCw size={16}/>{loading?'Actualisation…':'Actualiser'}</button></div>
+    <div className="section-intro"><div><span className="eyebrow">Annuaire établissement</span><h1>Membres</h1><p>Créez les personnes une fois, puis laissez ScholaSync gérer leur compte, leur rôle et les relations familiales.</p></div><button className="outline" onClick={load} disabled={loading||busy}><RefreshCw size={16}/>{loading?'Actualisation…':'Actualiser'}</button></div>
     {error&&<div className="alert error">{error}</div>}{message&&<div className="alert">{message}</div>}
     <div className="grid stats members-stats">{roleOrder.map(([key,label],i)=><Card key={key} icon={i<2?<Users/>:i===2?<School/>:i===3?<ShieldCheck/>:<ShoppingCart/>} title={label} value={String(counts[key]||0)} meta="Dans l’annuaire"/>)}</div>
     <div className="grid two members-grid">
@@ -321,7 +321,7 @@ export function Account({role,mode,data,session,theme,onThemeChange,onSaved}:{ro
   return <>
     <div className="account-hero">
       <div className="account-avatar">{firstLetters(p?.full_name||'Utilisateur')}</div>
-      <div className="account-identity"><h1>{p?.full_name||'Mon compte'}</h1><p>{demo?'Compte de démonstration, en lecture seule.':'Votre identité et votre sécurité dans École OS.'}</p></div>
+      <div className="account-identity"><h1>{p?.full_name||'Mon compte'}</h1><p>{demo?'Compte de démonstration, en lecture seule.':'Votre identité et votre sécurité dans ScholaSync.'}</p></div>
       <div className="account-role"><ShieldCheck size={16}/><span>{roleLabels[role]}</span></div>
     </div>
     <div className="account-attachments">{attachments.map(item=><div key={item.label}><span>{item.label}</span><b>{item.value}</b></div>)}</div>
@@ -344,7 +344,7 @@ export function Account({role,mode,data,session,theme,onThemeChange,onSaved}:{ro
         </form>
       </section>
       <section className="panel account-panel appearance-panel">
-        <div className="panel-head"><div><h3>Apparence</h3><span className="panel-subtitle">Trois ambiances, même École OS.</span></div><Palette size={18}/></div>
+        <div className="panel-head"><div><h3>Apparence</h3><span className="panel-subtitle">Trois ambiances, même ScholaSync.</span></div><Palette size={18}/></div>
         <div className="theme-picker">
           <button className={theme==='cahier'?'selected':''} onClick={()=>onThemeChange('cahier')}><span className="theme-swatch cahier"/><b>Cahier</b><small>Identité actuelle</small></button>
           <button className={theme==='epure'?'selected':''} onClick={()=>onThemeChange('epure')}><span className="theme-swatch epure"/><b>Épuré</b><small>Plus sobre</small></button>

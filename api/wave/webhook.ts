@@ -170,7 +170,7 @@ async function handler(req: VercelRequest, res: VercelResponse) {
 
     const reference = String(data.client_reference || '')
     const resource = await loadResource(admin, data, reference)
-    if (!resource) return await retryLater('Checkout Wave non rapproché avec une ressource École OS.')
+    if (!resource) return await retryLater('Checkout Wave non rapproché avec une ressource ScholaSync.')
     if (resource.checkoutId !== String(data.id)) {
       // A stale failure for a checkout superseded by a newer attempt must not block
       // delivery retries forever or mutate the currently linked checkout. A stale
@@ -182,7 +182,7 @@ async function handler(req: VercelRequest, res: VercelResponse) {
       }
       return await retryLater('Le checkout Wave reçu ne correspond pas au checkout enregistré sur la ressource; vérifier manuellement toute transaction réussie ancienne.')
     }
-    if (!safeAmount(resource.expectedAmount) || resource.expectedAmount !== amount) return await retryLater('Le montant Wave ne correspond pas au montant attendu dans École OS.')
+    if (!safeAmount(resource.expectedAmount) || resource.expectedAmount !== amount) return await retryLater('Le montant Wave ne correspond pas au montant attendu dans ScholaSync.')
 
     const now = new Date().toISOString()
     if (isSuccess) {

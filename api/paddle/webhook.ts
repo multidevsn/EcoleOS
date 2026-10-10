@@ -62,7 +62,7 @@ async function handler(req:VercelRequest,res:VercelResponse){
       if(error)throw error
       if(!updated?.id){
         await admin.from('paddle_events').update({last_error:'Aucun abonnement ne correspond aux références du webhook.'}).eq('id',event.event_id)
-        return res.status(503).json({error:'Webhook Paddle non rapproché avec un abonnement EcoleOS.',retryable:true})
+        return res.status(503).json({error:'Webhook Paddle non rapproché avec un abonnement ScholaSync.',retryable:true})
       }
     }
     const {error:processedError}=await admin.from('paddle_events').update({processed_at:new Date().toISOString(),last_error:null}).eq('id',event.event_id)

@@ -37,7 +37,7 @@ export function TechnicalOps({mode,session}:{mode:Mode,session:any}){
     return label
   }
   return <>
-    <div className="section-intro"><div><span className="eyebrow">ÉCOLE OS / CONTROL PLANE</span><h1>Ops & Autopilot.</h1><p>Surveillez la croissance, les coûts, les usages et le moteur de facturation sans piloter chaque école manuellement.</p></div><div className="ops-toolbar"><div className="ops-live-pill"><i/><span>Autopilot {payload?.autopilot?.enabled?'actif':'arrêté'}</span></div><button className="outline" onClick={syncProviders} disabled={syncing||mode==='live'&&!session?.access_token}><RefreshCw size={15} className={syncing?'spin':''}/>{syncing?'Synchronisation…':'Synchroniser les coûts'}</button></div></div>
+    <div className="section-intro"><div><span className="eyebrow">SCHOLASYNC / CONTROL PLANE</span><h1>Ops & Autopilot.</h1><p>Surveillez la croissance, les coûts, les usages et le moteur de facturation sans piloter chaque école manuellement.</p></div><div className="ops-toolbar"><div className="ops-live-pill"><i/><span>Autopilot {payload?.autopilot?.enabled?'actif':'arrêté'}</span></div><button className="outline" onClick={syncProviders} disabled={syncing||mode==='live'&&!session?.access_token}><RefreshCw size={15} className={syncing?'spin':''}/>{syncing?'Synchronisation…':'Synchroniser les coûts'}</button></div></div>
     {error?<ErrorNotice error={error} onRetry={retry||undefined}/>:null}{notice&&<div className="alert">{notice}</div>}
     {loading?<div className="skeleton"><i/><i/><i/></div>:<>
       <KpiStrip items={[

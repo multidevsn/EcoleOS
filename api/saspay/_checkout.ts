@@ -62,7 +62,7 @@ async function handler(req: VercelRequest, res: VercelResponse) {
     const { data: profile, error: profileError } = await admin.from('profiles').select('full_name,role,school_id').eq('id', user.id).maybeSingle()
     if (profileError) throw profileError
     const customerName = String(profile?.full_name || user.user_metadata?.full_name || user.email.split('@')[0] || 'Client').trim()
-    let amount = 0, description = 'Paiement Ecole.Online', resourceId = '', table: Table
+    let amount = 0, description = 'Paiement ScholaSync', resourceId = '', table: Table
 
     if (type === 'food') {
       const rawItems = Array.isArray(req.body?.items) ? req.body.items : []
@@ -104,14 +104,14 @@ async function handler(req: VercelRequest, res: VercelResponse) {
       if (subError) throw subError
       amount = Math.max(0, Number(cycle.amount_xof) - (sub?.billing_provider === 'paddle' ? Number(sub.billing_price_xof || 0) : 0))
       if (amount <= 0) return reply(res, 400, { error: 'Aucun frais d’usage à payer sur ce cycle.' })
-      resourceId = cycle.id; table = 'billing_cycles'; description = `Cycle de facturation École OS ${cycle.id}`
+      resourceId = cycle.id; table = 'billing_cycles'; description = `Cycle de facturation ScholaSync ${cycle.id}`
     } else if (type === 'school_subscription') {
       if (profile?.role !== 'director' || !profile.school_id) return reply(res, 403, { error: 'Seul le directeur peut payer cet abonnement.' })
       const id = String(req.body?.subscription_id || '')
       const { data: sub, error } = await admin.from('school_subscriptions').select('id,school_id,plan,billing_price_xof,status,saspay_checkout_id,saspay_checkout_url').eq('id', id).eq('school_id', profile.school_id).eq('status', 'pending').maybeSingle()
       if (error || !sub) return reply(res, 403, { error: 'Abonnement introuvable ou déjà payé.' })
       if (sub.saspay_checkout_id && sub.saspay_checkout_url) { const reuse = await reusableCheckout(apiKey, sub.saspay_checkout_id, sub.saspay_checkout_url); if (reuse) return reply(res, 200, reuse) }
-      amount = Number(sub.billing_price_xof); resourceId = sub.id; table = 'school_subscriptions'; description = `Abonnement École OS ${sub.plan}`
+      amount = Number(sub.billing_price_xof); resourceId = sub.id; table = 'school_subscriptions'; description = `Abonnement ScholaSync ${sub.plan}`
     } else return reply(res, 400, { error: 'Type de paiement inconnu.' })
 
     if (!Number.isFinite(amount) || amount <= 0) return reply(res, 400, { error: 'Montant invalide.' })

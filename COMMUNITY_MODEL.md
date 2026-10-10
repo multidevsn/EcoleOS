@@ -1,4 +1,4 @@
-# École OS — modèle Communauté / Evolution
+# ScholaSync — modèle Communauté / Evolution
 
 ## Communauté
 - La Communauté sert uniquement aux échanges et aux annonces.

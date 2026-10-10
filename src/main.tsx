@@ -70,7 +70,7 @@ const primaryTabs:Record<Role,Tab[]>={
   director:['home','community','pilotage','payments'],
   cafeteria:['home','food','community'],
 }
-const navContextLabel:Record<Tab,string>={home:'Votre journée',food:'Services du quotidien',schedule:'Votre planning',grades:'Scolarité',payments:'Finances',rewards:'Points & avantages',members:'Équipe & membres',agora:'Évolution d’École OS',community:'Espaces de confiance',pilotage:'Pilotage établissement',ops:'Système & coûts',account:'Préférences'}
+const navContextLabel:Record<Tab,string>={home:'Votre journée',food:'Services du quotidien',schedule:'Votre planning',grades:'Scolarité',payments:'Finances',rewards:'Points & avantages',members:'Équipe & membres',agora:'Évolution de ScholaSync',community:'Espaces de confiance',pilotage:'Pilotage établissement',ops:'Système & coûts',account:'Préférences'}
 const foodCapabilities:Record<Role,{order:boolean;manageMenu:boolean}>={student:{order:true,manageMenu:false},parent:{order:true,manageMenu:false},teacher:{order:false,manageMenu:false},admin:{order:false,manageMenu:true},director:{order:false,manageMenu:false},cafeteria:{order:false,manageMenu:true}}
 
 
@@ -79,7 +79,7 @@ function avg(grades:Grade[]){const den=grades.reduce((s,g)=>s+Number(g.coefficie
 function startOfToday(){const d=new Date();d.setHours(0,0,0,0);return d}
 function isoDate(d:Date){return d.toISOString().slice(0,10)}
 function nextClass(schedule:ScheduleRow[]){const now=new Date();const day=((now.getDay()+6)%7)+1;const today=schedule.filter(s=>s.weekday===day).sort((a,b)=>a.starts_at.localeCompare(b.starts_at));const time=now.toTimeString().slice(0,5);return today.find(s=>s.ends_at>=time)||today[0]||null}
-function firstLetters(name:string){return name.split(/\s+/).filter(Boolean).slice(0,2).map(x=>x[0]).join('').toUpperCase()||'EO'}
+function firstLetters(name:string){return name.split(/\s+/).filter(Boolean).slice(0,2).map(x=>x[0]).join('').toUpperCase()||'SS'}
 function mention(avg:number){return avg>=16?'Excellent !':avg>=14?'Très bien':avg>=12?'Bien':avg>=10?'Assez bien':'Peut mieux faire'}
 
 
@@ -114,7 +114,7 @@ const readDemoRole=():Role|null=>{try{const r=sessionStorage.getItem('ecole-os-d
 const demoRoleOrder:Role[]=['student','parent','teacher','admin','director','cafeteria']
 
 function LogoMark({size=38}:{size?:number}){return <svg className="logo-mark-svg" width={size} height={size} viewBox="0 0 38 38" aria-hidden="true"><rect x="4.5" y="4.5" width="29" height="29" rx="8" fill="none" stroke="currentColor" strokeWidth="2.2"/><path d="M12 13.5h14M12 19h9M12 24.5h14" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round"/><circle cx="27" cy="19" r="2.15" fill="currentColor"/><path d="M25.2 9.3h3.7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>}
-function Brand({sub}:{sub?:string}){return <div className="brand"><div className="brand-mark" aria-hidden="true"><LogoMark/></div><div><b>École OS</b>{sub&&<span>{sub}</span>}</div></div>}
+function Brand({sub}:{sub?:string}){return <div className="brand"><div className="brand-mark" aria-hidden="true"><LogoMark/></div><div><b>ScholaSync</b>{sub&&<span>{sub}</span>}</div></div>}
 
 // Un chunk chargé à la demande (React.lazy, ex. l’onglet Ops) peut avoir un nom qui change à chaque
 // déploiement. Si le navigateur a gardé une ancienne page en mémoire au moment du clic, il peut tenter de
@@ -139,7 +139,7 @@ class ErrorBoundary extends React.Component<{children:React.ReactNode},{error:Er
   componentDidCatch(error:Error,info:React.ErrorInfo){
     // Le détail technique part dans la console (et donc dans les outils de diagnostic),
     // jamais dans l'interface : un utilisateur ne doit pas lire une stack trace.
-    console.error('École OS — erreur d’affichage',error,info.componentStack)
+    console.error('ScholaSync — erreur d’affichage',error,info.componentStack)
   }
   render(){
     if(!this.state.error)return this.props.children
@@ -239,7 +239,7 @@ function Login({onSchool,onDemo}:{onSchool:()=>void,onDemo:(r:Role)=>void}){
     <div className="os-login-frame">
       <section className="os-command">
         <div className="os-kicker">
-          <span><i className="os-status-dot"/>ÉCOLE OS / SYSTÈME SCOLAIRE</span>
+          <span><i className="os-status-dot"/>SCHOLASYNC / GESTION SCOLAIRE</span>
           <span className="os-kicker-code">DOSSIER 01</span>
         </div>
 
@@ -249,7 +249,7 @@ function Login({onSchool,onDemo}:{onSchool:()=>void,onDemo:(r:Role)=>void}){
             <h1>Le quotidien de l’école,<br/><em>réuni.</em></h1>
             <p>Cours, notes, cantine, frais et vie scolaire sont regroupés dans un même système. Chaque personne ouvre directement son propre espace.</p>
           </div>
-          <div className="os-system-mark" aria-label="École OS, six espaces">
+          <div className="os-system-mark" aria-label="ScholaSync, six espaces">
             <span>6 ESPACES</span>
             <b>1 système</b>
             <small>Une seule porte d’entrée.</small>
@@ -259,7 +259,7 @@ function Login({onSchool,onDemo}:{onSchool:()=>void,onDemo:(r:Role)=>void}){
         <div className="os-map" aria-label="Espaces de démonstration">
           <div className="os-map-center">
             <div className="os-core-mark"><LogoMark size={46}/></div>
-            <span>ÉCOLE OS</span>
+            <span>SCHOLASYNC</span>
             <small>noyau scolaire</small>
           </div>
           <div className="os-map-line os-map-line-a"/>
@@ -306,7 +306,7 @@ function Login({onSchool,onDemo}:{onSchool:()=>void,onDemo:(r:Role)=>void}){
     </div>
 
     <footer className="os-login-footer">
-      <span>ÉCOLE OS · SYSTÈME D’EXPLOITATION SCOLAIRE</span>
+      <span>SCHOLASYNC · GESTION SCOLAIRE</span>
       <span>PAIEMENTS PAR WAVE</span>
     </footer>
   </main>
@@ -585,7 +585,7 @@ function App(){
         unsubscribe=()=>subscription.unsubscribe()
         if(alive)setSession(dataSession)
       }catch(error){
-        console.error('École OS — initialisation Auth impossible',error)
+        console.error('ScholaSync — initialisation Auth impossible',error)
         if(alive)setSession(null)
       }
     })()

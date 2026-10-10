@@ -1,13 +1,13 @@
 <resources>
-    <string name="app_name">École OS</string>
+    <string name="app_name">ScholaSync</string>
     <string name="server_button">Serveur</string>
     <string name="status_demo">Démo</string>
     <!-- L'adresse n'est plus saisie par l'utilisateur : voir TRUSTED_SERVER_ORIGIN dans MainActivity.java.
          Ce dialogue ne propose plus qu'un choix entre l'instance officielle et le mode démo. -->
     <string name="setup_demo_button">Essayer les comptes de démonstration</string>
-    <string name="setup_connect_button">Utiliser le serveur École OS</string>
-    <string name="settings_title">Instance École OS</string>
-    <string name="settings_message">Choisissez le serveur officiel École OS ou les comptes de démonstration.</string>
+    <string name="setup_connect_button">Utiliser le serveur ScholaSync</string>
+    <string name="settings_title">Instance ScholaSync</string>
+    <string name="settings_message">Choisissez le serveur officiel ScholaSync ou les comptes de démonstration.</string>
     <string name="button_cancel">Annuler</string>
     <string name="button_ok">OK</string>
     <string name="missing_assets">L’interface intégrée est absente. Reconstruisez l’application.</string>
@@ -15,7 +15,7 @@
     <string name="no_browser">Aucun navigateur sécurisé n’est disponible.</string>
     <string name="status_server">%1$s</string>
     <string name="status_loading">Chargement… %1$d %%</string>
-    <string name="error_title">École OS n’a pas pu s’ouvrir</string>
+    <string name="error_title">ScholaSync n’a pas pu s’ouvrir</string>
     <string name="error_retry">Réessayer</string>
     <string name="error_bad_origin">L’adresse du serveur configurée dans cette application n’est pas une origine HTTPS valide. Aucune page ne peut être affichée tant qu’elle n’est pas corrigée.</string>
     <string name="error_origin">Serveur : %1$s</string>
