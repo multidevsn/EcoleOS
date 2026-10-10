@@ -36,7 +36,7 @@ describe('describeError', () => {
     expect(describeError(new Error('Failed to fetch dynamically imported module'))).toMatchObject({
       kind: 'stale_version',
       retryable: true,
-      message: 'Une nouvelle version d’École OS est disponible. Rechargez la page pour continuer.',
+      message: 'Une nouvelle version de ScholaSync est disponible. Rechargez la page pour continuer.',
     })
   })
 
