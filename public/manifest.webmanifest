@@ -1,7 +1,7 @@
 {
-  "name": "Ecole.Online",
-  "short_name": "Ecole.Online",
-  "description": "Cours, notes, cantine et frais de scolarité au même endroit.",
+  "name": "ScholaSync",
+  "short_name": "ScholaSync",
+  "description": "ScholaSync : cours, notes, cantine et frais de scolarité au même endroit.",
   "lang": "fr",
   "start_url": "/",
   "display": "standalone",
