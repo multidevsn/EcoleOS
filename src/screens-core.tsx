@@ -1,5 +1,5 @@
 import React,{useEffect,useMemo,useState} from 'react'
-import {fr,shortMoney,shortDate,Empty,KpiStrip,MiniBar,Card} from './shared'
+import {fr,shortMoney,shortDate,Empty,KpiStrip,MiniBar,Card,runSaspaySandbox} from './shared'
 import {Panel,OrdersTable,ErrorNotice} from './ui'
 import {errorMessage} from './lib/errors'
 import {Mode} from './shared'
@@ -238,6 +238,7 @@ export function DirectorBilling({mode,data,session,refreshKey=0}:{mode:Mode,data
     try{
       const res=await fetch(provider==='saspay'?'/api/saspay/checkout':'/api/wave/checkout',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({type:'billing_cycle',billing_cycle_id:cycle?.id})})
       const result=await res.json();if(!res.ok)throw new Error(result.error||`HTTP ${res.status}`)
+      if(provider==='saspay'&&result.sandbox){await runSaspaySandbox(result,token,setMsg);setMsg('Cycle réglé via la sandbox SasPay : statut mis à jour.');setSaspayBusy(false);window.dispatchEvent(new Event('ecoleos-refresh'));return}
       window.location.href=provider==='saspay'?result.checkout_url:result.wave_launch_url
     }catch(error:any){setMsg(errorMessage(error,`Le paiement ${provider==='saspay'?'SasPay':'Wave'} n’a pas pu être créé.`));setSaspayBusy(false)}
   }
@@ -246,7 +247,7 @@ export function DirectorBilling({mode,data,session,refreshKey=0}:{mode:Mode,data
     if(!sub?.id){setMsg('Abonnement introuvable.');return}
     const token=session?.access_token;if(!token){setMsg('Session expirée.');return}
     setSaspayBusy(true);setMsg('Création du paiement SasPay…')
-    try{const res=await fetch('/api/saspay/checkout',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({type:'school_subscription',subscription_id:sub.id})});const result=await res.json();if(!res.ok)throw new Error(result.error||`HTTP ${res.status}`);window.location.href=result.checkout_url}
+    try{const res=await fetch('/api/saspay/checkout',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({type:'school_subscription',subscription_id:sub.id})});const result=await res.json();if(!res.ok)throw new Error(result.error||`HTTP ${res.status}`);if(result.sandbox){await runSaspaySandbox(result,token,setMsg);setMsg('Abonnement confirmé via la sandbox SasPay.');setSaspayBusy(false);window.dispatchEvent(new Event('ecoleos-refresh'));return}window.location.href=result.checkout_url}
     catch(error:any){setMsg(errorMessage(error,'Le paiement SasPay n’a pas pu être créé.'));setSaspayBusy(false)}
   }
   const base=Number(sub?.billing_price_xof||0)
@@ -265,7 +266,9 @@ export function Payments({role,mode,data,session,refreshKey=0}:{role:Role,mode:M
     if(mode==='demo'){setMsg('Mode démo : ce paiement est fictif, aucun débit réel ne sera effectué.');return}
     const token=session?.access_token;if(!token){setMsg('Session expirée.');return}
     setMsg(`Création du paiement ${provider==='saspay'?'SasPay':'Wave'}…`)
-    try{const res=await fetch(provider==='saspay'?'/api/saspay/checkout':'/api/wave/checkout',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({type:'school_payment',payment_id:paymentId})});const result=await res.json();if(!res.ok)throw new Error(result.error||`HTTP ${res.status}`);window.location.href=provider==='saspay'?result.checkout_url:result.wave_launch_url}
+    try{const res=await fetch(provider==='saspay'?'/api/saspay/checkout':'/api/wave/checkout',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({type:'school_payment',payment_id:paymentId})});const result=await res.json();if(!res.ok)throw new Error(result.error||`HTTP ${res.status}`)
+      if(provider==='saspay'&&result.sandbox){await runSaspaySandbox(result,token,setMsg);setMsg('Paiement confirmé via la sandbox SasPay : statut mis à jour.');window.dispatchEvent(new Event('ecoleos-refresh'));return}
+      window.location.href=provider==='saspay'?result.checkout_url:result.wave_launch_url}
     catch(error:any){setMsg(errorMessage(error,`Le paiement ${provider==='saspay'?'SasPay':'Wave'} n’a pas pu être créé.`))}
   }
   return <><div className="payment-banner"><CircleDollarSign size={30}/><div><b>Échéancier scolaire</b><span>{due?`Prochaine échéance · ${new Intl.DateTimeFormat('fr-FR').format(new Date(due.due_date))}`:'Aucune échéance en attente'}</span></div><strong>{shortMoney(due?.amount_xof||0)}</strong></div><Panel title={role==='parent'?'Paiements de votre enfant':'Mes paiements'}>{data.payments.length?data.payments.map(p=><div className="payment-row" key={p.id}><span>{p.description}</span><b>{money(p.amount_xof)}</b><small className={p.status==='succeeded'?'ok':'pending'}>{p.status==='succeeded'?'Payé':p.status==='failed'?'Échec':p.status==='expired'?'Expiré':'À payer'}</small>{p.status==='pending'?<div className="payment-actions"><button className="text-btn" onClick={()=>pay(p.id,'wave')}>Wave</button><button className="text-btn" onClick={()=>pay(p.id,'saspay')}>SasPay</button></div>:<button className="text-btn" disabled>{p.status==='succeeded'?'Reçu':'—'}</button>}</div>):<Empty text="Aucun paiement"/>}</Panel>{msg&&<div className="alert">{msg}</div>}</>}

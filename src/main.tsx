@@ -1,5 +1,5 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react'
-import {Mode, fr, shortMoney, frToday, shortDate, Empty, KpiStrip, MiniBar, Card} from './shared'
+import {Mode, fr, shortMoney, frToday, shortDate, Empty, KpiStrip, MiniBar, Card, runSaspaySandbox} from './shared'
 import {Panel, OrdersTable} from './ui'
 import {createRoot} from 'react-dom/client'
 
@@ -778,6 +778,7 @@ function App(){
     return()=>{alive=false}
   },[mode,tab,session?.user?.id,role,data.profile?.role,data.studentId,data.homePending?.length,reloadToken])
   const reload=()=>setReloadToken(t=>t+1)
+  useEffect(()=>{const h=()=>setReloadToken(t=>t+1);window.addEventListener('ecoleos-refresh',h);return()=>window.removeEventListener('ecoleos-refresh',h)},[])
   function enterDemo(r:Role){try{sessionStorage.setItem('ecole-os-demo-role',r)}catch{}setCart({});setOrderMsg('');setTab('home');setRole(r);setMode('demo')}
   if(schoolSignup)return <SchoolOnboarding onBack={()=>setSchoolSignup(false)} onDone={()=>{setSchoolSignup(false);setTab('home')}}/>
   if(mode==='live'&&!session)return <Login onSchool={()=>setSchoolSignup(true)} onDemo={enterDemo}/>
@@ -809,6 +810,7 @@ function App(){
       const res=await fetch(provider==='saspay'?'/api/saspay/checkout':'/api/wave/checkout',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({type:'food',items,pickup_date:isoDate(new Date()),pickup_slot:'12:30–12:40'})})
       const result=await res.json()
       if(!res.ok)throw new Error(result.error||`HTTP ${res.status}`)
+      if(provider==='saspay'&&result.sandbox){await runSaspaySandbox(result,token||'',setOrderMsg);setCart({});setOrderMsg('Commande payée via la sandbox SasPay : retrouvez-la dans « Mes commandes ».');setCheckoutBusy(false);window.dispatchEvent(new Event('ecoleos-refresh'));return}
       const checkoutUrl=provider==='saspay'?result.checkout_url:result.wave_launch_url
       if(typeof checkoutUrl!=='string'||!checkoutUrl.startsWith('https://'))throw new Error('Le prestataire n’a pas renvoyé une URL de paiement sécurisée.')
       window.location.href=checkoutUrl

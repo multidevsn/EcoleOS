@@ -32,9 +32,9 @@ android {
         // Origine HTTPS du serveur École OS. Ce n'est pas un secret : c'est l'adresse publique
         // du déploiement. Elle est injectée au build pour pouvoir changer d'instance sans
         // toucher au code Java :
-        //   ./gradlew assembleRelease -PecoleosServerOrigin=https://mon-ecole.vercel.app
+        //   ./gradlew assembleRelease -PecoleosServerOrigin=https://ecole.online
         def configuredOrigin = String.valueOf(
-            project.findProperty("ecoleosServerOrigin") ?: "https://ecole-os.vercel.app"
+            project.findProperty("ecoleosServerOrigin") ?: "https://ecole.online"
         ).trim()
         buildConfigField "String", "SERVER_ORIGIN", '"' + configuredOrigin.replace('"', '\\"') + '"'
     }

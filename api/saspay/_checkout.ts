@@ -33,7 +33,10 @@ async function reusableCheckout(apiKey: string, id: string, url: string) {
 async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return reply(res, 405, { error: 'Méthode non autorisée.' })
   const apiKey = env('SASPAY_API_KEY')
-  if (!apiKey) return reply(res, 503, { error: 'SasPay non configuré : ajoute SASPAY_API_KEY dans Vercel.' })
+  // Sans clé API, le parcours bascule en SANDBOX : aucun appel au prestataire, la
+  // confirmation passe par /api/saspay/sandbox/approve. Dès que SASPAY_API_KEY est
+  // renseignée dans Vercel, le flux SasPay réel reprend automatiquement.
+  const sandbox = !apiKey
   if (!env('SUPABASE_URL') || !env('SUPABASE_PUBLISHABLE_KEY') || !env('SUPABASE_SECRET_KEY')) return reply(res, 503, { error: 'Supabase serveur non configuré.' })
   const configuredAppUrl = env('APP_URL').trim()
   if (!configuredAppUrl) return reply(res, 503, { error: 'APP_URL doit être configurée avec l’URL HTTPS canonique du site.' })
@@ -59,7 +62,7 @@ async function handler(req: VercelRequest, res: VercelResponse) {
     const { data: profile, error: profileError } = await admin.from('profiles').select('full_name,role,school_id').eq('id', user.id).maybeSingle()
     if (profileError) throw profileError
     const customerName = String(profile?.full_name || user.user_metadata?.full_name || user.email.split('@')[0] || 'Client').trim()
-    let amount = 0, description = 'Paiement École OS', resourceId = '', table: Table
+    let amount = 0, description = 'Paiement Ecole.Online', resourceId = '', table: Table
 
     if (type === 'food') {
       const rawItems = Array.isArray(req.body?.items) ? req.body.items : []
@@ -115,29 +118,41 @@ async function handler(req: VercelRequest, res: VercelResponse) {
     // Ne jamais construire l'URL de retour depuis l'en-tête Host fourni par le client.
     const returnUrl = new URL('/', appUrl.origin)
     returnUrl.searchParams.set('payment', 'saspay-return'); returnUrl.searchParams.set('type', type); returnUrl.searchParams.set('resource_id', resourceId)
-    const apiRes = await fetch(`${API}/checkout-sessions/`, { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(8000), body: JSON.stringify({ amount: amount.toFixed(2), currency: 'XOF', description, country: env('SASPAY_COUNTRY_CODE') || 'SN', customer_email: user.email, customer_name: customerName, return_url: returnUrl.toString(), metadata: { ecoleos_resource_type: type, ecoleos_resource_id: resourceId, ecoleos_source: 'ecoleos' } }) })
-    const body = await apiRes.json().catch(() => ({})); const checkout = unwrap(body)
-    if (!apiRes.ok) { if (table === 'food_orders') { await cleanupFoodOrder(admin, resourceId, user.id); pendingFoodOrderId = '' } return reply(res, apiRes.status, { error: body?.message || body?.error || `SasPay checkout refusé (HTTP ${apiRes.status}).`, code: body?.code }) }
-    if (typeof checkout?.id !== 'string' || !checkout.id.trim() || typeof checkout?.checkout_url !== 'string' || checkout.currency !== 'XOF' || !Number.isSafeInteger(Number(checkout.amount)) || Math.abs(Number(checkout.amount) - amount) > 0.001) {
-      if (table === 'food_orders') { await cleanupFoodOrder(admin, resourceId, user.id); pendingFoodOrderId = '' }
-      return reply(res, 502, { error: 'Réponse SasPay incomplète ou montant/devise inattendus.' })
-    }
+    let checkoutId = ''
     let checkoutUrl: URL
-    try { checkoutUrl = new URL(checkout.checkout_url) } catch { if (table === 'food_orders') { await cleanupFoodOrder(admin, resourceId, user.id); pendingFoodOrderId = '' } return reply(res, 502, { error: 'URL de paiement SasPay invalide.' }) }
-    if (checkoutUrl.protocol !== 'https:' || checkoutUrl.hostname !== 'pay.saspay.me' || checkoutUrl.username || checkoutUrl.password || checkoutUrl.port) {
-      if (table === 'food_orders') { await cleanupFoodOrder(admin, resourceId, user.id); pendingFoodOrderId = '' }
-      return reply(res, 502, { error: 'SasPay a retourné un domaine de paiement non approuvé.' })
+    if (sandbox) {
+      // Checkout simulé : même contrat qu'un checkout SasPay réel (id + URL), mais
+      // l'URL pointe vers l'application et l'id est préfixé sbx_ pour audit.
+      checkoutId = `sbx_${crypto.randomUUID()}`
+      checkoutUrl = new URL('/', appUrl.origin)
+      checkoutUrl.searchParams.set('saspay_sandbox', checkoutId)
+    } else {
+      const apiRes = await fetch(`${API}/checkout-sessions/`, { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(8000), body: JSON.stringify({ amount: amount.toFixed(2), currency: 'XOF', description, country: env('SASPAY_COUNTRY_CODE') || 'SN', customer_email: user.email, customer_name: customerName, return_url: returnUrl.toString(), metadata: { ecoleos_resource_type: type, ecoleos_resource_id: resourceId, ecoleos_source: 'ecoleos' } }) })
+      const body = await apiRes.json().catch(() => ({})); const checkout = unwrap(body)
+      if (!apiRes.ok) { if (table === 'food_orders') { await cleanupFoodOrder(admin, resourceId, user.id); pendingFoodOrderId = '' } return reply(res, apiRes.status, { error: body?.message || body?.error || `SasPay checkout refusé (HTTP ${apiRes.status}).`, code: body?.code }) }
+      if (typeof checkout?.id !== 'string' || !checkout.id.trim() || typeof checkout?.checkout_url !== 'string' || checkout.currency !== 'XOF' || !Number.isSafeInteger(Number(checkout.amount)) || Math.abs(Number(checkout.amount) - amount) > 0.001) {
+        if (table === 'food_orders') { await cleanupFoodOrder(admin, resourceId, user.id); pendingFoodOrderId = '' }
+        return reply(res, 502, { error: 'Réponse SasPay incomplète ou montant/devise inattendus.' })
+      }
+      let validated: URL
+      try { validated = new URL(checkout.checkout_url) } catch { if (table === 'food_orders') { await cleanupFoodOrder(admin, resourceId, user.id); pendingFoodOrderId = '' } return reply(res, 502, { error: 'URL de paiement SasPay invalide.' }) }
+      if (validated.protocol !== 'https:' || validated.hostname !== 'pay.saspay.me' || validated.username || validated.password || validated.port) {
+        if (table === 'food_orders') { await cleanupFoodOrder(admin, resourceId, user.id); pendingFoodOrderId = '' } return reply(res, 502, { error: 'SasPay a retourné un domaine de paiement non approuvé.' })
+      }
+      checkoutId = String(checkout.id)
+      checkoutUrl = validated
     }
     const now = new Date().toISOString()
     let update: any
-    if (table === 'food_orders') update = await admin.from('food_orders').update({ saspay_checkout_id: checkout.id, saspay_checkout_url: checkoutUrl.toString(), saspay_amount_xof: amount }).eq('id', resourceId).eq('user_id', user.id).eq('status', 'pending').select('id').maybeSingle()
-    else if (table === 'school_payments') update = await admin.from('school_payments').update({ saspay_checkout_id: checkout.id, saspay_checkout_url: checkoutUrl.toString(), saspay_amount_xof: amount }).eq('id', resourceId).eq('user_id', user.id).eq('status', 'pending').select('id').maybeSingle()
-    else if (table === 'billing_cycles') update = await admin.from('billing_cycles').update({ saspay_checkout_id: checkout.id, saspay_checkout_url: checkoutUrl.toString(), saspay_amount_xof: amount, provider: 'saspay_checkout', provider_checkout_id: checkout.id, provider_checkout_url: checkoutUrl.toString(), updated_at: now }).eq('id', resourceId).eq('school_id', profile?.school_id).in('status', ['due', 'past_due']).select('id').maybeSingle()
-    else update = await admin.from('school_subscriptions').update({ saspay_checkout_id: checkout.id, saspay_checkout_url: checkoutUrl.toString(), saspay_amount_xof: amount, updated_at: now }).eq('id', resourceId).eq('school_id', profile?.school_id).eq('status', 'pending').select('id').maybeSingle()
+    if (table === 'food_orders') update = await admin.from('food_orders').update({ saspay_checkout_id: checkoutId, saspay_checkout_url: checkoutUrl.toString(), saspay_amount_xof: amount }).eq('id', resourceId).eq('user_id', user.id).eq('status', 'pending').select('id').maybeSingle()
+    else if (table === 'school_payments') update = await admin.from('school_payments').update({ saspay_checkout_id: checkoutId, saspay_checkout_url: checkoutUrl.toString(), saspay_amount_xof: amount }).eq('id', resourceId).eq('user_id', user.id).eq('status', 'pending').select('id').maybeSingle()
+    else if (table === 'billing_cycles') update = await admin.from('billing_cycles').update({ saspay_checkout_id: checkoutId, saspay_checkout_url: checkoutUrl.toString(), saspay_amount_xof: amount, provider: 'saspay_checkout', provider_checkout_id: checkoutId, provider_checkout_url: checkoutUrl.toString(), updated_at: now }).eq('id', resourceId).eq('school_id', profile?.school_id).in('status', ['due', 'past_due']).select('id').maybeSingle()
+    else update = await admin.from('school_subscriptions').update({ saspay_checkout_id: checkoutId, saspay_checkout_url: checkoutUrl.toString(), saspay_amount_xof: amount, updated_at: now }).eq('id', resourceId).eq('school_id', profile?.school_id).eq('status', 'pending').select('id').maybeSingle()
     if (update.error) { if (table === 'food_orders') { await cleanupFoodOrder(admin, resourceId, user.id); pendingFoodOrderId = '' } throw update.error }
     if (!update.data?.id) { if (table === 'food_orders') { await cleanupFoodOrder(admin, resourceId, user.id); pendingFoodOrderId = '' } return reply(res, 409, { error: 'La ressource a changé pendant la création du checkout. Aucun lien de paiement n’a été remis.' }) }
     pendingFoodOrderId = ''
-    return reply(res, 200, { checkout_url: checkoutUrl.toString(), checkout_id: checkout.id })
+    if (sandbox) return reply(res, 200, { sandbox: true, checkout_url: checkoutUrl.toString(), checkout_id: checkoutId, amount_xof: amount, type, resource_id: resourceId })
+    return reply(res, 200, { checkout_url: checkoutUrl.toString(), checkout_id: checkoutId })
   } catch (error: any) { if (adminForCleanup && pendingFoodOrderId && pendingFoodUserId) await cleanupFoodOrder(adminForCleanup, pendingFoodOrderId, pendingFoodUserId).catch(() => {}); return reply(res, 500, { error: error?.message || 'Impossible de créer le paiement SasPay.' }) }
 }
 export default withSecurity('/api/saspay/checkout', handler)
