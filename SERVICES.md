@@ -1,4 +1,4 @@
-# Quels services externes École OS utilise-t-il, et lesquels supprimer ?
+# Quels services externes ScholaSync utilise-t-il, et lesquels supprimer ?
 
 Réponse courte : **Resend et Twilio ne servaient à rien** (aucun email, aucun SMS n'est
 envoyé par le produit) — ils sont supprimés. **Vercel Analytics / Speed Insights /
