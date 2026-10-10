@@ -1,4 +1,4 @@
-# École OS — coûts fournisseurs réels
+# ScholaSync — coûts fournisseurs réels
 
 Le dashboard Ops distingue volontairement deux bases :
 
