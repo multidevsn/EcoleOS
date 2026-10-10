@@ -67,7 +67,7 @@ jobs:
             fi
           done
           umask 077
-          export ANDROID_KEYSTORE_FILE="$RUNNER_TEMP/ecoleos-release.jks"
+          export ANDROID_KEYSTORE_FILE="$RUNNER_TEMP/scholasync-release.jks"
           trap 'rm -f "$ANDROID_KEYSTORE_FILE"' EXIT
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$ANDROID_KEYSTORE_FILE"
           ./gradlew --no-daemon assembleRelease
