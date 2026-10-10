@@ -1,6 +1,6 @@
-# École OS — Security model
+# ScholaSync — Security model
 
-École OS n'utilise pas un « mode obscur » côté client. La sécurité est appliquée côté serveur et en base.
+ScholaSync n'utilise pas un « mode obscur » côté client. La sécurité est appliquée côté serveur et en base.
 
 ## Barrière réelle
 - Supabase Auth identifie le compte.
