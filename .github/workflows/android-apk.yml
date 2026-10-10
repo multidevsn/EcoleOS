@@ -67,7 +67,7 @@ jobs:
             fi
           done
           umask 077
-          export ANDROID_KEYSTORE_FILE="$RUNNER_TEMP/ecoleos-release.jks"
+          export ANDROID_KEYSTORE_FILE="$RUNNER_TEMP/scholasync-release.jks"
           trap 'rm -f "$ANDROID_KEYSTORE_FILE"' EXIT
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$ANDROID_KEYSTORE_FILE"
           ./gradlew --no-daemon assembleRelease
@@ -77,7 +77,7 @@ jobs:
       - name: Télécharger l'APK depuis les artifacts du workflow
         uses: actions/upload-artifact@v4
         with:
-          name: ecoleos-${{ (startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.build_type == 'release')) && 'release' || 'debug' }}-${{ github.run_number }}
+          name: scholasync-${{ (startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.build_type == 'release')) && 'release' || 'debug' }}-${{ github.run_number }}
           path: android/app/build/outputs/apk/**/*.apk
           if-no-files-found: error
           retention-days: 30

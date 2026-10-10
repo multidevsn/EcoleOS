@@ -1,4 +1,4 @@
-# École OS — optimisation de chargement
+# ScholaSync — optimisation de chargement
 
 ## Changements appliqués
 

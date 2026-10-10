@@ -151,7 +151,7 @@ n'affichait rien — tandis que le mode démo, lui, utilisait une URL valide
 (`https://demo.ecole-os.invalid`) : d'où le symptôme « la démo marche, la connexion non ».
 
 - L'origine est maintenant une constante lisible, injectée au build
-  (`./gradlew assembleRelease -PecoleosServerOrigin=https://mon-ecole.vercel.app`).
+  (`./gradlew assembleRelease -PecoleosServerOrigin=https://scholasync.com`).
 - `normalizeOrigin()` valide le schéma, l'hôte, l'absence de chemin ; une origine
   invalide affiche un écran natif explicite au lieu d'un WebView vide.
 - `onReceivedError` / `onReceivedHttpError` / `onReceivedSslError` affichent cet écran

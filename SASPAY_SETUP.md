@@ -1,4 +1,4 @@
-# Intégration SasPay — École OS
+# Intégration SasPay — ScholaSync
 
 Cette intégration ajoute SasPay comme moyen de paiement hébergé tout en conservant Wave et Paddle. Elle cible les commandes Food, les échéances scolaires, les abonnements ponctuels du directeur et les cycles de facturation.
 
@@ -8,7 +8,7 @@ Appliquer dans l'ordre `supabase/migrations/20261009_saspay_payments.sql`, puis 
 
 ## 2. Variables d’environnement Vercel
 
-Dans **Vercel → EcoleOS → Settings → Environment Variables**, ajouter :
+Dans **Vercel → projet technique `ecole-os` → Settings → Environment Variables**, ajouter :
 
 | Variable | Valeur |
 | --- | --- |

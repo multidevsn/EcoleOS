@@ -32,9 +32,10 @@ android {
         // Origine HTTPS du serveur ScholaSync. Ce n'est pas un secret : c'est l'adresse publique
         // du déploiement. Elle est injectée au build pour pouvoir changer d'instance sans
         // toucher au code Java :
+        // Domaine cible (à activer après enregistrement DNS et rattachement Vercel) : https://scholasync.com
         //   ./gradlew assembleRelease -PecoleosServerOrigin=https://scholasync.com
         def configuredOrigin = String.valueOf(
-            project.findProperty("ecoleosServerOrigin") ?: "https://ecole.online"
+            project.findProperty("ecoleosServerOrigin") ?: "https://ecole-os.vercel.app"
         ).trim()
         buildConfigField "String", "SERVER_ORIGIN", '"' + configuredOrigin.replace('"', '\\"') + '"'
     }

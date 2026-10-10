@@ -1,4 +1,4 @@
-# Rules for École OS Release build
+# Rules for ScholaSync Release build
 -keep class org.ecoleos.app.MainActivity { *; }
 -keep class org.ecoleos.app.** { *; }
 -keepclassmembers class * extends android.app.Activity { *; }

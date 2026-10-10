@@ -229,7 +229,7 @@ function Login({onSchool,onDemo}:{onSchool:()=>void,onDemo:(r:Role)=>void}){
 
   return <main className="os-login">
     <header className="os-login-top">
-      <Brand sub="système scolaire"/>
+      <Brand sub="gestion scolaire"/>
       <div className="os-top-status">
         <span><i className="os-status-dot"/>SYSTÈME EN SERVICE</span>
         <b>ACCÈS · 01</b>
